@@ -1,0 +1,91 @@
+###################################################################################
+# CASIA-B (no entropy)
+export MODEL=Erasing_AMP_DDP_casia_b_rt128_train_base_bin16 && \
+python -m torch.distributed.launch --nproc_per_node=8 --master_port 29503 train.py \
+--dataset CASIA-B --resolution 128 --dataset_path /dev/shm/Dataset/casia_b/silhouettes_cut128_pkl \
+--milestones 10000 20000 30000 --total_iter 35000 --warmup False \
+--more_channels False --bin_num 16 --hidden_dim 256 \
+--encoder_entropy_weight 0.0 \
+--model_name $MODEL --gpu 0,1,2,3,4,5,6,7 \
+--AMP True --DDP True --dataset_augment True \
+2>&1 | tee $MODEL.log
+
+===Rank-1 (Include identical-view cases)===
+NM: 97.785,     BG: 95.053,     CL: 80.736
+===Rank-1 (Exclude identical-view cases)===
+NM: 97.582,     BG: 94.576,     CL: 79.273
+===Rank-1 of each angle (Exclude identical-view cases)===
+NM: [95.00 99.30 99.70 98.10 96.80 95.70 97.50 98.90 99.40 97.80 95.20]
+BG: [94.40 96.77 97.78 96.43 93.60 90.80 93.00 96.50 96.90 96.47 87.70]
+CL: [72.30 85.00 87.10 83.40 79.10 77.70 79.70 83.00 82.90 76.60 65.20]
+
+# CASIA-B (with entropy, use features before BN and compute Euclidean distance for evaluation)
+export MODEL=Erasing_AMP_DDP_casia_b_rt128_train_base_bin16_entropy && \
+python -m torch.distributed.launch --nproc_per_node=8 --master_port 29503 train.py \
+--dataset CASIA-B --resolution 128 --dataset_path /dev/shm/Dataset/casia_b/silhouettes_cut128_pkl \
+--milestones 10000 20000 30000 --total_iter 35000 --warmup False \
+--more_channels False --bin_num 16 --hidden_dim 256 \
+--encoder_entropy_weight 0.1 \
+--model_name $MODEL --gpu 0,1,2,3,4,5,6,7 \
+--AMP True --DDP True --dataset_augment True \
+2>&1 | tee $MODEL.log
+
+===Rank-1 (Include identical-view cases)===
+NM: 97.851,     BG: 95.002,     CL: 81.785
+===Rank-1 (Exclude identical-view cases)===
+NM: 97.655,     BG: 94.521,     CL: 80.336
+===Rank-1 of each angle (Exclude identical-view cases)===
+NM: [95.60 99.50 99.40 98.50 97.60 95.60 97.00 98.70 99.30 98.70 94.30]
+BG: [94.30 96.97 97.07 96.43 93.30 90.30 92.50 96.00 97.00 95.86 90.00]
+CL: [73.80 83.40 87.40 85.10 80.00 77.50 80.30 84.50 84.90 80.80 66.00]
+
+###################################################################################
+# OUMVLP (no entropy)
+export MODEL=AMP_DDP_OUMVLP_rt64_train_base_bin16 && \
+python -m torch.distributed.launch --nproc_per_node=8 --master_port 29503 train.py \
+--dataset OUMVLP --resolution 64 --dataset_path /dev/shm/Dataset/OUMVLP/silhouettes_cut_pkl --pid_num 5153 --batch_size 32 16 \
+--milestones 50000 100000 125000 --total_iter 150000 --warmup False --label_smooth False \
+--more_channels True --bin_num 16 --hidden_dim 256 \
+--encoder_entropy_weight 0.0 \
+--model_name $MODEL --gpu 0,1,2,3,4,5,6,7 \
+--AMP True --DDP True --dataset_augment False \
+2>&1 | tee $MODEL.log
+
+===Rank-1 (Include identical-view cases)===
+89.5022447936389
+===Rank-1 (Exclude identical-view cases)===
+89.05829666473053
+[83.63 89.69 90.93 91.11 90.01 90.15 89.55 85.91 88.65 90.05 90.21 89.35
+ 89.18 88.40]
+
+===Rank-1 (Include identical-view cases)===
+95.72770402869399
+===Rank-1 (Exclude identical-view cases)===
+95.44912086738337
+[89.08 95.51 97.79 97.72 95.75 96.87 96.22 91.39 94.85 97.20 97.14 95.44
+ 96.12 95.21]
+
+# OUMVLP (with entropy, use features before BN and compute Euclidean distance for evaluation)
+export MODEL=AMP_DDP_OUMVLP_rt64_train_base_bin16_entropy && \
+python -m torch.distributed.launch --nproc_per_node=8 --master_port 29503 train.py \
+--dataset OUMVLP --resolution 64 --dataset_path /dev/shm/Dataset/OUMVLP/silhouettes_cut_pkl --pid_num 5153 --batch_size 32 16 \
+--milestones 50000 100000 125000 --total_iter 150000 --warmup False --label_smooth False \
+--more_channels True --bin_num 16 --hidden_dim 256 \
+--encoder_entropy_weight 0.1 \
+--model_name $MODEL --gpu 0,1,2,3,4,5,6,7 \
+--AMP True --DDP True --dataset_augment False \
+2>&1 | tee $MODEL.log
+
+===Rank-1 (Include identical-view cases)===
+89.91801004993673
+===Rank-1 (Exclude identical-view cases)===
+89.50291195544567
+[84.62 90.14 91.19 91.31 90.45 90.43 89.96 86.81 89.16 90.36 90.51 89.66
+ 89.57 88.88]
+
+===Rank-1 (Include identical-view cases)===
+96.18071431529765
+===Rank-1 (Exclude identical-view cases)===
+95.9337362771506
+[90.13 95.99 98.06 97.95 96.25 97.18 96.67 92.34 95.40 97.54 97.47 95.78
+ 96.55 95.75]
