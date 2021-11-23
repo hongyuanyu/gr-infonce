@@ -3,6 +3,7 @@ from copy import deepcopy
 import numpy as np
 from .data import load_data
 from .model import Model
+from .model_contrastive import ModelContrastive
 
 def initialize_data(config):
     print("Initializing data source...")
@@ -15,7 +16,11 @@ def initialize_model(config, train_source, test_source):
     config['train_source'] = train_source
     config['test_source'] = test_source
     config['save_name'] = '{}_{}_{}_{}'.format(config['model_name'], config['dataset'], config['pid_num'], config['pid_shuffle'])
-    m = Model(config)
+    
+    if config['contrastivelearning']:
+        m = ModelContrastive(config)
+    else:
+        m = Model(config)
     print("Model initialization complete.")
     return m
 

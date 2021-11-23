@@ -12,7 +12,7 @@ class TripletLoss(nn.Module):
         self.nonzero = nonzero
         self.triplet_type = triplet_type
 
-    def forward(self, feature, label):
+    def forward(self, feature, label, iteration):
         # feature: [n, m, d], label: [n, m]      16*128*128  16*128
         n, m, d = feature.size()
         hp_mask = (label.unsqueeze(1) == label.unsqueeze(2))
@@ -23,11 +23,13 @@ class TripletLoss(nn.Module):
             # hard
             hn_mask_sum = hn_mask.sum(2)[0]
             random_hn_dist = list()
+            index = list()
             for i in range(len(hn_mask_sum)):  #128
                 #hp_index = np.random.choice(range(hp_mask_sum[i]), 1, replace=False)
                 hn_index_i = np.random.choice(range(hn_mask_sum[i]), 1, replace=False)
-                random_hn_dist.append(dist[:,i,hn_index_i])  #31*1*1
-            set_trace()   
+                random_hn_dist.append(dist[:,i,hn_index_i])  #31*1*1 
+                index.append(hn_index_i)
+            #set_trace()
             hard_hp_dist = torch.max(torch.masked_select(dist, hp_mask).view(n, m, -1), 2)[0]  #31*128
             random_hn_dist = torch.cat(random_hn_dist, dim=1)  #16*128
             if self.margin > 0:
@@ -105,3 +107,7 @@ class TripletLoss(nn.Module):
         dist = x2.unsqueeze(2) + x2.unsqueeze(2).transpose(1, 2) - 2 * torch.matmul(x, x.transpose(1, 2))
         dist = torch.sqrt(F.relu(dist))
         return dist
+
+    def loss_statistic(self, feature, label_noisy, label_clean):
+        
+        return loss_clean, loss_noisy, iteration

@@ -12,6 +12,9 @@ parser = argparse.ArgumentParser()
 ##$
 parser.add_argument('--mem_bank', default=False, type=boolean_string, help='whether to use mem_bank for statistic')
 parser.add_argument('--triplet_type', default='full', type=str, help='checkpoint name for saving')
+parser.add_argument('--encoder_contrastive_weight', default=0.0, type=float, help='weight for contrastive after encoder') 
+parser.add_argument('--encoder_contrastive_margin', default=0.2, type=float, help='margin for contrastive after encoder') 
+parser.add_argument('--contrastivelearning', default=False, type=boolean_string, help='whether to use mem_bank for statistic')
 
 
 parser.add_argument('--gpu', default='0,1,2,3', type=str, help='gpu id')

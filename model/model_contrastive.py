@@ -18,15 +18,16 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 from .data import TripletSampler, DistributedTripletSampler, build_data_transforms
-from .loss import DistributedLossWrapper, CenterLoss, CrossEntropyLabelSmooth, TripletLoss   #PartTripletLoss,
+from .loss import DistributedLossWrapper, CenterLoss, CrossEntropyLabelSmooth, TripletLoss, ContrastiveLoss  #PartTripletLoss,
 from .solver import WarmupMultiStepLR
 from .network import GaitSet
 from .network.sync_batchnorm import DataParallelWithCallback
 from pdb import set_trace
 import torch.nn.functional as F
 import pickle 
+from torchviz import make_dot
 
-class Model:
+class ModelContrastive:
     def __init__(self, config):
         self.config = deepcopy(config)
         if self.config['DDP']:
@@ -85,6 +86,9 @@ class Model:
             if self.config['DDP']:
                 self.encoder_triplet_loss = DistributedLossWrapper(self.encoder_triplet_loss, dim=1)
 
+        if self.config['encoder_contrastive_weight'] > 0:
+            self.contrastive_loss = ContrastiveLoss(self.config['encoder_contrastive_margin'], self.config['batch_size'], sum(self.config['bin_num'])).float().cuda()
+
     def build_loss_metric(self):
         if self.config['encoder_entropy_weight'] > 0:
             self.encoder_entropy_loss_metric = [[]]
@@ -118,7 +122,7 @@ class Model:
             self.load(self.config['restore_iter'])
         else:
             self.config['restore_iter'] = 0
-
+        
         train_loader = tordata.DataLoader(
             dataset=self.config['train_source'],
             batch_sampler=self.triplet_sampler,
@@ -129,7 +133,7 @@ class Model:
         train_label_set.sort()
 
         _time1 = datetime.now()
-        for seq, label, batch_frame in train_loader:
+        for seq, labels, batch_frame in train_loader:
             #############################################################
             if self.config['DDP'] and self.config['restore_iter'] > 0 and \
                 self.config['restore_iter'] % self.triplet_sampler.total_batch_per_world == 0:
@@ -137,18 +141,19 @@ class Model:
             #############################################################
             self.optimizer.zero_grad()
 
-            seq = self.np2var(seq).float()
-            target_label = [train_label_set.index(l) for l in label]
+            target_label = [train_label_set.index(l) for l in labels]
             target_label = self.np2var(np.asarray(target_label)).long()
             if batch_frame is not None:
                 batch_frame = self.np2var(batch_frame).int()
-
+            seq = self.np2var(seq).float()
+            
             with autocast(enabled=self.config['AMP']):
                 encoder_feature, encoder_bn_feature, encoder_cls_score \
-                = self.encoder(seq, self.config['restore_iter'], batch_frame, target_label)
-
+                = self.encoder(seq, self.config['restore_iter'], batch_frame, target_label)  #128*31*256
+            #g = make_dot(encoder_feature)
+            #g.render(filename='graph', view=False)
             loss = torch.zeros(1).to(encoder_feature.device)
-
+                
             if self.config['encoder_entropy_weight'] > 0:
                 entropy_loss_metric = 0
                 for i in range(encoder_cls_score.size(1)):
@@ -160,10 +165,18 @@ class Model:
             if self.config['encoder_triplet_weight'] > 0:
                 encoder_triplet_feature = encoder_feature.float().permute(1, 0, 2).contiguous()
                 triplet_label = target_label.unsqueeze(0).repeat(encoder_triplet_feature.size(0), 1)
-                triplet_loss_metric, nonzero_num = self.encoder_triplet_loss(encoder_triplet_feature, triplet_label, self.config['restore_iter'])
+                triplet_loss_metric, nonzero_num = self.encoder_triplet_loss(encoder_triplet_feature, triplet_label)
                 loss += triplet_loss_metric.mean() * self.config['encoder_triplet_weight']
                 self.encoder_triplet_loss_metric[0].append(triplet_loss_metric.mean().data.cpu().numpy())
                 self.encoder_triplet_loss_metric[1].append(nonzero_num.mean().data.cpu().numpy())
+
+            if self.config['encoder_contrastive_weight'] > 0:
+                batch_size=128
+                encoder_contrastive_feature = encoder_feature[:batch_size,:,:].float().permute(1, 0, 2).contiguous()
+                encoder_aug_feature = encoder_feature[batch_size:,:,:].float().permute(1, 0, 2).contiguous()
+                contrastive_loss_metric = self.contrastive_loss(encoder_contrastive_feature, encoder_aug_feature, self.config['restore_iter'])
+
+                loss += contrastive_loss_metric * self.config['encoder_contrastive_weight']
 
             self.total_loss_metric.append(loss.data.cpu().numpy())
 
@@ -184,7 +197,6 @@ class Model:
                         self.mem_bank = self.renew_mem_bank_all(self.mem_bank)
                         self.mem_statistic = self.statistic(self.mem_statistic, self.config['restore_iter'], self.mem_bank)
                     print('time for mem_bank',datetime.now() - time3)
-
             
             if self.config['restore_iter'] % 100 == 0:
                 if (not self.config['DDP']) or (self.config['DDP'] and dist.get_rank() == 0):
@@ -192,13 +204,20 @@ class Model:
                     _time1 = datetime.now()
                     self.print_info()
                 self.build_loss_metric()
-            if self.config['restore_iter'] % 10000 == 0 or self.config['restore_iter'] == self.config['total_iter']:
+            if self.config['restore_iter'] % 1000 == 0 or self.config['restore_iter'] == self.config['total_iter']:
                 if (not self.config['DDP']) or (self.config['DDP'] and dist.get_rank() == 0):
                     self.save()
             if self.config['restore_iter'] == self.config['total_iter']:
                 break
             self.config['restore_iter'] += 1
-
+    def check_gpu(self, module):
+        if isinstance(module, torch.nn.DataParallel):
+            module = module.module
+        for submodule in module.children():
+            if hasattr(submodule, "_parameters"):
+                parameters = submodule._parameters
+                if "weight" in parameters:
+                    print(submodule, parameters["weight"].device)
     def renew_mem_bank_all(self, mem_bank, batch_size=1, flag='train'):
         self.encoder.eval()
         source = self.config['test_source'] if flag == 'test' else self.config['train_source']
@@ -361,13 +380,15 @@ class Model:
                 frame_id_list = sorted(np.random.choice(frame_set, frame_num, replace=True))
             return sample[frame_id_list, :, :]
         seqs = list(map(select_frame, range(len(seqs))))        
-
+        
         # data augmentation
         def transform_seq(index):
             sample = seqs[index]
             return self.data_transforms(sample)
         if self.config['dataset_augment']:
-            seqs = list(map(transform_seq, range(len(seqs))))  
+            seqs += list(map(transform_seq, range(len(seqs))))  
+            label = label*2
+            batch[1] = label
 
         # concatenate seqs for each gpu if necessary
         if self.config['sample_type'] == 'random':

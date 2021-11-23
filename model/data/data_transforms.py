@@ -8,6 +8,8 @@ import numpy as np
 import cv2
 from PIL import Image
 import torchvision.transforms as T
+from pdb import set_trace
+from copy import deepcopy
 
 def array2img(x):
     return (x*255.0).astype('uint8')
@@ -176,8 +178,28 @@ class RandomPadCrop(object):
         j = random.randint(0, sw - dw)
         return i, j, i+dh, j+dw
 
+class ClothDilate(object):
+    def __init__(self, prob=0.5, dilate_pos=[8,56]):
+        self.prob = prob
+        self.dilate_pos = dilate_pos
+        self.dilate_kernal = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3,3))
+
+    def __call__(self, seq):
+        if random.uniform(0, 1) >= self.prob:
+            return seq
+        else:
+            _, dh, dw = seq.shape
+            seq = [cut_img(seq[tmp, :, :], dh, dw) for tmp in range(seq.shape[0])]
+            img_dilate = deepcopy(seq)
+            for tmp in range(len(seq)):
+                img_dilate[tmp][self.dilate_pos[0]:self.dilate_pos[1],:] = cv2.dilate(seq[tmp][self.dilate_pos[0]:self.dilate_pos[1],:], self.dilate_kernal, 1)
+            img_dilate = np.array(img_dilate).astype('float32')
+            return img_dilate
+
+
+
 def build_data_transforms(random_erasing=False, random_rotate=False, \
-        random_horizontal_flip=False, random_pad_crop=False, resolution=64, random_seed=2019):
+        random_horizontal_flip=False, random_pad_crop=False, cloth_dilate=False, resolution=64, random_seed=2019):
     np.random.seed(random_seed)
     random.seed(random_seed)
     print("random_seed={} for build_data_transforms".format(random_seed))
@@ -188,9 +210,12 @@ def build_data_transforms(random_erasing=False, random_rotate=False, \
     if random_rotate:
         object_list.append(RandomRotate(prob=0.5, degree=5))
     if random_erasing:
-        object_list.append(RandomErasing(prob=0.5, sl=0.02, sh=0.05, r1=0.3, per_frame=False))
+        object_list.append(RandomErasing(prob=1, sl=0.02, sh=0.05, r1=0.3, per_frame=False))
     if random_horizontal_flip:
-        object_list.append(RandomHorizontalFlip(prob=0.5))
+        object_list.append(RandomHorizontalFlip(prob=1))
+    if cloth_dilate:
+        object_list.append(ClothDilate(prob=1))
+
 
     transform = T.Compose(object_list)
     return transform
@@ -204,42 +229,52 @@ if __name__ == "__main__":
     
     merge_imgs = {}
     
-    example_pkl = './example_data/018.pkl'
+    example_pkl = '/home/yuweichen/workspace/data64pkl/004/nm-01/018/018.pkl'
     seq_in = pickle.load(open(example_pkl, 'rb'))
     resolution = seq_in.shape[1]
     cut_padding = 10*int(resolution/64)
     seq_in = seq_in[:, :, cut_padding:-cut_padding]
     seq_in = img2array(seq_in)
-    save_seq(seq_in, seq_dir='./example_data/raw_seq')
+    seq_dir = './visualize'
+    if not os.path.exists(seq_dir):
+        os.makedirs(seq_dir)
+    save_seq(seq_in, os.path.join(seq_dir, 'raw_seq'))
     merge_imgs.update({'raw':merge_seq(seq_in)})
     print(seq_in.shape, np.min(seq_in), np.max(seq_in), seq_in.dtype)
 
     transform = build_data_transforms(random_pad_crop=True, resolution=resolution)
     seq_out = transform(seq_in.copy())
-    save_seq(seq_out, seq_dir='./example_data/pad_crop_seq')
+    save_seq(seq_out, os.path.join(seq_dir, 'pad_crop_seq'))
     seq_merge = merge_seq(seq_out)
     merge_imgs.update({'pad_crop':merge_seq(seq_out)})
     print(seq_out.shape, np.min(seq_out), np.max(seq_out), seq_out.dtype)
 
     transform = build_data_transforms(random_rotate=True)
     seq_out = transform(seq_in.copy())
-    save_seq(seq_out, seq_dir='./example_data/rotate_seq')
+    save_seq(seq_out, os.path.join(seq_dir, 'rotate_seq'))
     seq_merge = merge_seq(seq_out)
     merge_imgs.update({'rotate':merge_seq(seq_out)})
     print(seq_out.shape, np.min(seq_out), np.max(seq_out), seq_out.dtype)
 
     transform = build_data_transforms(random_erasing=True)
     seq_out = transform(seq_in.copy())
-    save_seq(seq_out, seq_dir='./example_data/erasing_seq')
+    save_seq(seq_out, os.path.join(seq_dir, 'erasing_seq'))
     seq_merge = merge_seq(seq_out)
     merge_imgs.update({'erasing':merge_seq(seq_out)})
     print(seq_out.shape, np.min(seq_out), np.max(seq_out), seq_out.dtype)
 
     transform = build_data_transforms(random_horizontal_flip=True)
     seq_out = transform(seq_in.copy())
-    save_seq(seq_out, seq_dir='./example_data/horizontal_flip_seq')
+    save_seq(seq_out, os.path.join(seq_dir, 'horizontal_flip_seq'))
     seq_merge = merge_seq(seq_out)
     merge_imgs.update({'horizontal_flip':merge_seq(seq_out)})
+    print(seq_out.shape, np.min(seq_out), np.max(seq_out), seq_out.dtype)
+
+    transform = build_data_transforms(cloth_dilate=True)
+    seq_out = transform(seq_in.copy())
+    save_seq(seq_out, os.path.join(seq_dir, 'cloth_dilate_seq'))
+    seq_merge = merge_seq(seq_out)
+    merge_imgs.update({'cloth_dilate':merge_seq(seq_out)})
     print(seq_out.shape, np.min(seq_out), np.max(seq_out), seq_out.dtype)
 
     rows = 1

@@ -6,7 +6,7 @@ import numpy as np
 from copy import deepcopy
 from .basic_blocks import BasicConv2d
 from .sync_batchnorm import SynchronizedBatchNorm2d, SynchronizedBatchNorm1d
-
+from pdb import set_trace
 class GaitSet(nn.Module):
     def __init__(self, config):
         super(GaitSet, self).__init__()
@@ -78,7 +78,7 @@ class GaitSet(nn.Module):
                 tmp.append(torch.max(x[batch_frames[i]:batch_frames[i+1], :, :, :], 0, keepdim=True)[0])
             return torch.cat(tmp, 0)
 
-    def forward(self, silho, batch_frames=None, label=None):
+    def forward(self, silho, iter, batch_frames=None, label=None):
         with autocast(enabled=self.config['AMP']):
             # n: batch_size, s: frame_num, k: keypoints_num, c: channel
             if batch_frames is not None:
