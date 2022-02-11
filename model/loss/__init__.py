@@ -5,4 +5,6 @@ from .center_loss import CenterLoss
 from .cross_entropy_label_smooth import CrossEntropyLabelSmooth
 from .triplet_loss import TripletLoss
 from .contrastive_loss import ContrastiveLoss
-
+from .cloth_loss import ClothLoss
+from .reranking_graph import RerankingGraph
+from .spcl import SPCLoss

@@ -29,12 +29,12 @@ Returns:
 """
 
 import numpy as np
-
+from pdb import set_trace
 def k_reciprocal_neigh(initial_rank, i, k1):
     forward_k_neigh_index = initial_rank[i,:k1+1]
     backward_k_neigh_index = initial_rank[forward_k_neigh_index,:k1+1]
     fi = np.where(backward_k_neigh_index==i)[0]
-    return forward_k_neigh_index[fi]
+    return forward_k_neigh_index[fi]   #返回那些和i互为前k1个的id
 
 def re_ranking(q_g_dist, q_q_dist, g_g_dist, k1=20, k2=6, lambda_value=0.3):
     # The following naming, e.g. gallery_num, is different from outer scope.
@@ -63,7 +63,6 @@ def re_ranking(q_g_dist, q_q_dist, g_g_dist, k1=20, k2=6, lambda_value=0.3):
             candidate_k_reciprocal_index = k_reciprocal_neigh(initial_rank, candidate, int(np.around(k1/2)))
             if len(np.intersect1d(candidate_k_reciprocal_index,k_reciprocal_index))> 2./3*len(candidate_k_reciprocal_index):
                 k_reciprocal_expansion_index = np.append(k_reciprocal_expansion_index,candidate_k_reciprocal_index)
-
         k_reciprocal_expansion_index = np.unique(k_reciprocal_expansion_index)
         weight = np.exp(-original_dist[i,k_reciprocal_expansion_index])
         V[i,k_reciprocal_expansion_index] = 1.*weight/np.sum(weight)

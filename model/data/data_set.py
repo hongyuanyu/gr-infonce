@@ -6,14 +6,17 @@ import pickle
 import cv2
 
 class DataSet(tordata.Dataset):
-    def __init__(self, seq_dir_list, seq_label_list, index_dict, resolution, cut_padding):
+    def __init__(self, seq_dir_list, seq_label_list, seq_label_clean_list, seq_type_list, index_dict, resolution, cut_padding):
         self.seq_dir_list = seq_dir_list
         self.seq_label_list = seq_label_list
+        self.seq_label_clean_list = seq_label_clean_list
         self.index_dict = index_dict
         self.resolution = int(resolution)
         self.cut_padding = int(cut_padding)
         self.data_size = len(self.seq_label_list)
         self.label_set = sorted(list(set(self.seq_label_list)))
+        self.seq_type_list = seq_type_list
+        self.seq_type_set = sorted(list(set(self.seq_type_list)))
 
     def __loader__(self, path):
         if self.cut_padding > 0:
@@ -29,7 +32,9 @@ class DataSet(tordata.Dataset):
         seq_path = self.seq_dir_list[index]
         seq_imgs = self.__loader__(seq_path)
         seq_label = self.seq_label_list[index]
-        return seq_imgs, seq_label
+        seq_label_clean = self.seq_label_clean_list[index]
+        seq_type = self.seq_type_list[index]
+        return seq_imgs, seq_label, seq_label_clean, seq_type, index
 
     def img2xarray(self, file_path):
         pkl_name = '{}.pkl'.format(os.path.basename(file_path))

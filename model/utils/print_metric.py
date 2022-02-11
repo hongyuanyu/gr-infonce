@@ -19,6 +19,7 @@ def print_CMC(CMC, config):
                 np.mean(CMC[0, :, :, i]),
                 np.mean(CMC[1, :, :, i]),
                 np.mean(CMC[2, :, :, i])))
+
     for i in rank_list:
         print('===Rank-%d (Exclude identical-view cases)===' % (i + 1))
         if config['dataset'] == 'OUMVLP':
@@ -37,6 +38,7 @@ def print_CMC(CMC, config):
             print('NM:', de_diag(CMC[0, :, :, i], True))
             print('BG:', de_diag(CMC[1, :, :, i], True))
             print('CL:', de_diag(CMC[2, :, :, i], True))
+    return [np.mean(CMC[0, :, :, 0]), np.mean(CMC[1, :, :, 0]), np.mean(CMC[2, :, :, 0])]
 
 def print_metric(metric, config, metric_name='mAP'):
     print('==={} (Include identical-view cases)==='.format(metric_name))

@@ -5,6 +5,7 @@ import numpy as np
 import pickle
 
 from .data_set import DataSet
+from pdb import set_trace
 
 def load_data(config):
     print("############################")
@@ -14,6 +15,8 @@ def load_data(config):
     print("############################")
     seq_dir_list = list()
     seq_id_list = list()
+    seq_type_list = list()
+    seq_id_clean_list = list()
 
     cut_padding = int(float(resolution)/64*10)
     check_frames = config['check_frames']
@@ -37,6 +40,8 @@ def load_data(config):
                             continue
                     seq_dir_list.append(view_path)
                     seq_id_list.append(prefix+_id)
+                    seq_type_list.append(_type)
+                    seq_id_clean_list.append(prefix+_id[:3])
                     #############################################################
                     if check_resolution:
                         pkl_name = '{}.pkl'.format(os.path.basename(view_path))
@@ -89,21 +94,27 @@ def load_data(config):
     # train source
     train_seq_dir_list = [seq_dir_list[i] for i, l in enumerate(seq_id_list) if l.split('_')[0] in train_id_list]
     train_seq_id_list = [seq_id_list[i] for i, l in enumerate(seq_id_list) if l.split('_')[0] in train_id_list]
+    train_seq_type_list = [seq_type_list[i] for i, l in enumerate(seq_id_list) if l.split('_')[0] in train_id_list]
+    train_seq_id_clean_list = [seq_id_clean_list[i] for i, l in enumerate(seq_id_list) if l.split('_')[0] in train_id_list]
+    
     train_index_info = {}
     for i, l in enumerate(train_seq_id_list):
         if l not in train_index_info.keys():
             train_index_info[l] = []
         train_index_info[l].append(i)
-    train_source = DataSet(train_seq_dir_list, train_seq_id_list, train_index_info, resolution, cut_padding)
+    train_source = DataSet(train_seq_dir_list, train_seq_id_list, train_seq_id_clean_list, train_seq_type_list, train_index_info, resolution, cut_padding)
+
     # test source
     test_seq_dir_list = [seq_dir_list[i] for i, l in enumerate(seq_id_list) if l.split('_')[0] in test_id_list]
     test_seq_id_list = [seq_id_list[i] for i, l in enumerate(seq_id_list) if l.split('_')[0] in test_id_list]
+    test_seq_type_list = [seq_type_list[i] for i, l in enumerate(seq_id_list) if l.split('_')[0] in test_id_list]
+
     test_index_info = {}
     for i, l in enumerate(test_seq_id_list):
         if l not in test_index_info.keys():
             test_index_info[l] = []
         test_index_info[l].append(i)
-    test_source = DataSet(test_seq_dir_list, test_seq_id_list, test_index_info, resolution, cut_padding)
+    test_source = DataSet(test_seq_dir_list, test_seq_id_list, test_seq_id_list, test_seq_type_list, test_index_info, resolution, cut_padding)
 
     print('train label set={}, total={}'.format(sorted(list(set(train_seq_id_list))), len(list(set(train_seq_id_list)))))
     print('test label set={}, total={}'.format(sorted(list(set(test_seq_id_list))), len(list(set(test_seq_id_list)))))   

@@ -47,7 +47,7 @@ class GaitSet(nn.Module):
         else:
             self.part_bn = SynchronizedBatchNorm1d(self.hidden_dim*sum(self.bin_num))
         if self.phase == 'train' and self.config['encoder_entropy_weight'] > 0:
-            self.part_cls = nn.Linear(self.hidden_dim*sum(self.bin_num), self.config['num_id'], bias=False)
+            self.part_cls = nn.Linear(self.hidden_dim*sum(self.bin_num), self.config['num_id_all'], bias=False)
                 
         #initialization
         for m in self.modules():

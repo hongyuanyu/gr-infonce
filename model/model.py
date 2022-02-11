@@ -97,7 +97,7 @@ class Model:
     def build_optimizer(self):
         #params
         tg_params = self.encoder.parameters()
- 
+
         #optimizer
         if self.config['optimizer_type'] == 'SGD':
             self.optimizer = optim.SGD(tg_params, lr=self.config['lr'], weight_decay=self.config['weight_decay'], momentum=self.config['momentum'])
@@ -130,6 +130,7 @@ class Model:
 
         _time1 = datetime.now()
         for seq, label, batch_frame in train_loader:
+            
             #############################################################
             if self.config['DDP'] and self.config['restore_iter'] > 0 and \
                 self.config['restore_iter'] % self.triplet_sampler.total_batch_per_world == 0:
@@ -152,7 +153,7 @@ class Model:
             if self.config['encoder_entropy_weight'] > 0:
                 entropy_loss_metric = 0
                 for i in range(encoder_cls_score.size(1)):
-                    entropy_loss_metric += self.encoder_entropy_loss(encoder_cls_score[:, i, :].float(), target_label)
+                    entropy_loss_metric += self.encoder_entropy_loss(encoder_cls_score[:, i, :].float(), target_label, target_label, l=0, loss_statistic=False)
                 entropy_loss_metric = entropy_loss_metric / encoder_cls_score.size(1)
                 loss += entropy_loss_metric * self.config['encoder_entropy_weight']
                 self.encoder_entropy_loss_metric[0].append(entropy_loss_metric.mean().data.cpu().numpy())
@@ -160,7 +161,7 @@ class Model:
             if self.config['encoder_triplet_weight'] > 0:
                 encoder_triplet_feature = encoder_feature.float().permute(1, 0, 2).contiguous()
                 triplet_label = target_label.unsqueeze(0).repeat(encoder_triplet_feature.size(0), 1)
-                triplet_loss_metric, nonzero_num = self.encoder_triplet_loss(encoder_triplet_feature, triplet_label, self.config['restore_iter'])
+                triplet_loss_metric, nonzero_num = self.encoder_triplet_loss(encoder_triplet_feature, triplet_label, triplet_label, seq_type=None, loss_statistic=False)
                 loss += triplet_loss_metric.mean() * self.config['encoder_triplet_weight']
                 self.encoder_triplet_loss_metric[0].append(triplet_loss_metric.mean().data.cpu().numpy())
                 self.encoder_triplet_loss_metric[1].append(nonzero_num.mean().data.cpu().numpy())
@@ -192,7 +193,7 @@ class Model:
                     _time1 = datetime.now()
                     self.print_info()
                 self.build_loss_metric()
-            if self.config['restore_iter'] % 10000 == 0 or self.config['restore_iter'] == self.config['total_iter']:
+            if self.config['restore_iter'] % 100 == 0 or self.config['restore_iter'] == self.config['total_iter']:
                 if (not self.config['DDP']) or (self.config['DDP'] and dist.get_rank() == 0):
                     self.save()
             if self.config['restore_iter'] == self.config['total_iter']:
@@ -318,7 +319,6 @@ class Model:
             feature = output[feat_idx]
             feature_list.append(feature.detach())             
             label_list += label
-
         return torch.cat(feature_list, 0), view_list, seq_type_list, label_list
 
     def collate_fn(self, batch):
@@ -349,7 +349,7 @@ class Model:
         if len(batch_frames[-1]) != batch_per_gpu:
             for i in range(batch_per_gpu - len(batch_frames[-1])):
                 batch_frames[-1].append(0)
-
+        #print('batch_frames:',batch_frames)
         # select frames from each seq 
         def select_frame(index):
             sample = seqs[index]
@@ -359,6 +359,7 @@ class Model:
                 frame_id_list = sorted(np.random.choice(frame_set, frame_num, replace=False))
             else:
                 frame_id_list = sorted(np.random.choice(frame_set, frame_num, replace=True))
+            #print('frame_id_list',frame_id_list)
             return sample[frame_id_list, :, :]
         seqs = list(map(select_frame, range(len(seqs))))        
 
@@ -368,6 +369,34 @@ class Model:
             return self.data_transforms(sample)
         if self.config['dataset_augment']:
             seqs = list(map(transform_seq, range(len(seqs))))  
+
+        def NoneView(seqs):
+            seqs = np.array(seqs)
+            _,frame,h,w = seqs.shape
+            seqs = seqs.reshape(self.config['batch_size'][0],-1,h,w)
+            none_view_seq = list()
+            #random select frame
+            '''
+            for i in range(self.config['batch_size'][0]):
+                frame_list = np.array(np.random.choice(self.config['batch_size'][1]*self.config['frame_num'], self.config['batch_size'][1]*self.config['frame_num'], replace=False))
+                for j in range(self.config['batch_size'][1]):
+                    index = frame_list[j*self.config['frame_num']:self.config['frame_num']*(j+1)]
+                    #print('index:',i,j,index)
+                    #print('shape:', seqs[i].shape, _,frame,h,w, seqs[i][index].shape)
+                    none_view_seq.append(seqs[i][index])
+            '''
+            #choose the different part
+            for i in range(self.config['batch_size'][0]):
+                for j in range(self.config['batch_size'][1]):
+                    index = np.array([range(j*self.config['frame_num'],j*self.config['frame_num']+15),range((j-1)*self.config['frame_num']+15,(j-1)*self.config['frame_num']+30)]
+                        ).reshape(-1)
+                    #print('index:',i,j,index)
+                    none_view_seq.append(seqs[i][index])
+                    #print('shape:', seqs[i][index].shape, seqs[i][index])
+            return none_view_seq
+        none_view = True
+        if none_view and self.config['phase']=='train':
+            seqs = NoneView(seqs)
 
         # concatenate seqs for each gpu if necessary
         if self.config['sample_type'] == 'random':
@@ -389,7 +418,7 @@ class Model:
         batch[0] = seqs
         if self.config['sample_type'] == 'all' or self.config['sample_type'] == 'random_fn':
             batch[-1] = np.asarray(batch_frames)
-        
+        #print('seqs:', seqs.shape)
         return batch
    
     def ts2var(self, x):

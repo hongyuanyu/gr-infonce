@@ -6,6 +6,9 @@ mpl.use('Agg')
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 visualize_feature_pkl = '{}_{}set_{}visualize_tsne_feature.pkl'.format(config['dataset'], config['test_set'], os.path.split(config['ckp_prefix'])[-1])
+save_dir = './visualize_feature'
+if not os.path.exists(save_dir):
+    os.makedirs(save_dir)
 print('visualize_feature_pkl: {}'.format(visualize_feature_pkl))
 if os.path.exists(visualize_feature_pkl):
     with open(visualize_feature_pkl, 'rb') as f:
@@ -23,7 +26,8 @@ seq_type_list = sorted(list(set(seq_type)))
 label_list = sorted(list(set(label)))
 tsne_feature = X_tsne
 
-save_dir = '{}_{}set_{}visualize_tsne_images'.format(config['dataset'], config['test_set'], os.path.split(config['ckp_prefix'])[-1])
+save_dir = '{}_{}visualize_tsne_images'.format(config['model_name'], os.path.split(config['ckp_prefix'])[-1])
+save_dir = os.path.join('./visualize_feature', save_dir)
 print('visualize_save_dir: {}'.format(save_dir))
 if not os.path.exists(save_dir):
     os.makedirs(save_dir)

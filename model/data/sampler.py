@@ -4,7 +4,7 @@ import torch.distributed as dist
 import math
 import random
 import numpy as np
-
+from pdb import set_trace
 class TripletSampler(tordata.sampler.Sampler):
     def __init__(self, dataset, batch_size):
         self.dataset = dataset
