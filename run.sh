@@ -92,4 +92,18 @@ export MODEL=64_35k_cl0.6_clean_noneview_15 && \
     --mem_bank False --triplet_type 'full' --clean_subset False\
     --pid_num 73\
     2>&1 | tee ./log/$MODEL.log
+
+export MODEL=64_35k_cl0.6_da_multiloss && \
+    python -u train.py \
+    --dataset CASIA-B --resolution 64 --dataset_path /home/yuweichen/workspace/data64pkl \
+    --milestones 10000 20000 --total_iter 20000 --warmup False --restore_iter 0\
+    --more_channels False --bin_num 16 --hidden_dim 256 \
+    --encoder_entropy_weight 0.1 --encoder_triplet_weight 1.0 \
+    --model_name $MODEL --gpu 0,1,2,3 --lr 0.1 \
+    --AMP False --DDP False --reranking False \
+    --mem_bank False --triplet_type 'full' --clean_subset False \
+    --pid_num 73 \
+    --dataset_augment True --self_supervised_weight 0.1 \
+    2>&1 | tee ./log/$MODEL.log
+    
     

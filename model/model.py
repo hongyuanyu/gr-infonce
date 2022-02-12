@@ -18,7 +18,7 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 from .data import TripletSampler, DistributedTripletSampler, build_data_transforms
-from .loss import DistributedLossWrapper, CenterLoss, CrossEntropyLabelSmooth, TripletLoss   #PartTripletLoss,
+from .loss import DistributedLossWrapper, CenterLoss, CrossEntropyLabelSmooth, TripletLoss, InfonceLoss   #PartTripletLoss,
 from .solver import WarmupMultiStepLR
 from .network import GaitSet
 from .network.sync_batchnorm import DataParallelWithCallback
@@ -61,9 +61,12 @@ class Model:
     def build_data(self):
         # data augment
         if self.config['dataset_augment']:
-            self.data_transforms = build_data_transforms(random_erasing=False, random_rotate=False, \
+            self.data_transforms = build_data_transforms(random_erasing=True, random_rotate=False, \
                                         random_horizontal_flip=False, random_pad_crop=False, cloth_dilate=True,\
                                         resolution=self.config['resolution'], random_seed=self.random_seed) 
+            self.data_transforms_new = build_data_transforms(random_erasing=False, random_rotate=False, \
+                                        random_horizontal_flip=False, random_pad_crop=True, cloth_dilate=True,\
+                                        resolution=self.config['resolution'], random_seed=self.random_seed+1) 
         
         #triplet sampler
         if self.config['DDP']:
@@ -84,6 +87,13 @@ class Model:
             self.encoder_triplet_loss = TripletLoss(self.config['encoder_triplet_margin'], self.config['triplet_type']).float().cuda()
             if self.config['DDP']:
                 self.encoder_triplet_loss = DistributedLossWrapper(self.encoder_triplet_loss, dim=1)
+        if self.config['self_supervised_weight'] > 0:
+            temperature = 0.07
+            self.ap_mode = 'all'  # 'all' 'centor'  'random'
+            self.an_mode = 'all'  # 'all' 'centor'  'random'
+            self.infonce_loss = InfonceLoss(temperature, self.config['batch_size'], self.ap_mode, self.an_mode).float().cuda()
+            if self.config['DDP']:
+                self.encoder_triplet_loss = DistributedLossWrapper(self.infonce_loss, dim=1)
 
     def build_loss_metric(self):
         if self.config['encoder_entropy_weight'] > 0:
@@ -92,6 +102,9 @@ class Model:
         if self.config['encoder_triplet_weight'] > 0:
             self.encoder_triplet_loss_metric = [[], []]
 
+        if self.config['self_supervised_weight'] > 0:
+            self.infonce_loss_metric = [[]]
+            
         self.total_loss_metric = []
     
     def build_optimizer(self):
@@ -130,7 +143,6 @@ class Model:
 
         _time1 = datetime.now()
         for seq, label, batch_frame in train_loader:
-            
             #############################################################
             if self.config['DDP'] and self.config['restore_iter'] > 0 and \
                 self.config['restore_iter'] % self.triplet_sampler.total_batch_per_world == 0:
@@ -165,6 +177,14 @@ class Model:
                 loss += triplet_loss_metric.mean() * self.config['encoder_triplet_weight']
                 self.encoder_triplet_loss_metric[0].append(triplet_loss_metric.mean().data.cpu().numpy())
                 self.encoder_triplet_loss_metric[1].append(nonzero_num.mean().data.cpu().numpy())
+            if self.config['self_supervised_weight'] > 0:
+
+                batch_size = self.config['batch_size'][0] * self.config['batch_size'][1]
+                _, bins, dim = encoder_feature.shape
+                infonce_loss = self.infonce_loss(encoder_feature[:batch_size,:,:].view(self.config['batch_size'][0],self.config['batch_size'][1],bins, dim),
+                    encoder_feature[batch_size:,:,:].view(self.config['batch_size'][0],self.config['batch_size'][1],bins, dim))
+                loss += infonce_loss.mean() * self.config['self_supervised_weight']
+                self.infonce_loss_metric[0].append(infonce_loss.mean().data.cpu().numpy())
 
             self.total_loss_metric.append(loss.data.cpu().numpy())
 
@@ -287,6 +307,13 @@ class Model:
             loss_info = 'nonzero_num={:.6f}, margin={}'.format(np.mean(self.encoder_triplet_loss_metric[1]), self.config['encoder_triplet_margin'])
             print_loss_info(loss_name, loss_metric, loss_weight, loss_info)
 
+        if self.config['self_supervised_weight'] > 0:
+            loss_name = 'InfoNCE'
+            loss_metric = self.infonce_loss_metric[0]
+            loss_weight = self.config['self_supervised_weight']
+            loss_info = 'ap_mode={},an_mode={}'.format(self.ap_mode, self.an_mode)
+            print_loss_info(loss_name, loss_metric, loss_weight, loss_info)
+
         print('{:#^30}: total_loss_metric={:.6f}'.format('Total Loss', np.mean(self.total_loss_metric)))
         
         #optimizer
@@ -367,8 +394,17 @@ class Model:
         def transform_seq(index):
             sample = seqs[index]
             return self.data_transforms(sample)
+            ############为了多加一部分的loss###################
+        def transform_seq_new(index):
+            sample = seqs[index]
+            return self.data_transforms_new(sample)
         if self.config['dataset_augment']:
-            seqs = list(map(transform_seq, range(len(seqs))))  
+            seqs_original = list(map(transform_seq, range(len(seqs))))  
+            seqs_da = list(map(transform_seq_new, range(len(seqs)))) 
+            seqs = [seqs_original,seqs_da]
+            seqs = np.concatenate(seqs, axis=0)
+            label = np.concatenate([label,label], axis=0)
+            batch[1] = label
 
         def NoneView(seqs):
             seqs = np.array(seqs)
@@ -394,7 +430,7 @@ class Model:
                     none_view_seq.append(seqs[i][index])
                     #print('shape:', seqs[i][index].shape, seqs[i][index])
             return none_view_seq
-        none_view = True
+        none_view = False
         if none_view and self.config['phase']=='train':
             seqs = NoneView(seqs)
 

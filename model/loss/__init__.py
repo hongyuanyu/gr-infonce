@@ -8,3 +8,4 @@ from .contrastive_loss import ContrastiveLoss
 from .cloth_loss import ClothLoss
 from .reranking_graph import RerankingGraph
 from .spcl import SPCLoss
+from .infonce_loss import InfonceLoss

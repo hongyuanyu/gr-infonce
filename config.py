@@ -29,6 +29,7 @@ parser.add_argument('--reranking_graph', default=False, type=boolean_string, hel
 parser.add_argument('--hiar_mem_bank', default=False, type=boolean_string, help='whether to use hiar_mem_bank or not')
 parser.add_argument('--log_name', default='', type=str, help='for writing logs')
 parser.add_argument('--spcloss_weight', default=0.0, type=float, help='weight for spcloss') 
+parser.add_argument('--self_supervised_weight', default=0.0, type=float, help='weight for infonce') 
 
 parser.add_argument('--gpu', default='0,1,2,3', type=str, help='gpu id')
 parser.add_argument('--model_name', default='GaitSet', type=str, help='checkpoint name for saving')
