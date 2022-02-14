@@ -21,8 +21,8 @@ def initialize_model(config):
         m = ModelContrastive(config)
     elif config['model_mix']:
         m = ModelMix(config)
-    #elif  config['self_supervised_weight']:
-    #    m = ModelUSL(config)
+    elif  config['model_usl']:
+        m = ModelUSL(config)
     else:
         m = Model(config)
     print("Model initialization complete.")

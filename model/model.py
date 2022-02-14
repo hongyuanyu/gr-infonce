@@ -64,10 +64,10 @@ class Model:
         # data augment
         if self.config['dataset_augment']:
             self.data_transforms = build_data_transforms(random_erasing=True, random_rotate=False, \
-                                        random_horizontal_flip=False, random_pad_crop=False, cloth_dilate=True,\
+                                        random_horizontal_flip=False, random_pad_crop=False, cloth_dilate=False,\
                                         resolution=self.config['resolution'], random_seed=self.random_seed) 
             self.data_transforms_new = build_data_transforms(random_erasing=False, random_rotate=False, \
-                                        random_horizontal_flip=False, random_pad_crop=True, cloth_dilate=True,\
+                                        random_horizontal_flip=False, random_pad_crop=True, cloth_dilate=False,\
                                         resolution=self.config['resolution'], random_seed=self.random_seed+1) 
         
         #triplet sampler
@@ -91,8 +91,8 @@ class Model:
                 self.encoder_triplet_loss = DistributedLossWrapper(self.encoder_triplet_loss, dim=1)
         if self.config['self_supervised_weight'] > 0:
             temperature = 0.07
-            self.ap_mode = 'random'  # 'all' 'centor'  'random'
-            self.an_mode = 'random'  # 'all' 'centor'  'random'
+            self.ap_mode = 'all'  # 'all' 'centor'  'random'
+            self.an_mode = 'all'  # 'all' 'centor'  'random'
             self.infonce_loss = InfonceLoss(temperature, self.config['batch_size'], self.ap_mode, self.an_mode).float().cuda()
 
             self.infonce_loss_git = InfoNCE(negative_mode='paired')

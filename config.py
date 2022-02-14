@@ -33,6 +33,7 @@ parser.add_argument('--self_supervised_weight', default=0.0, type=float, help='w
 parser.add_argument('--da_iter', default=20000, type=int, help='after this iter starts da iteration')
 parser.add_argument('--restore_name', default='', type=str, help='for writing logs')
 parser.add_argument('--infonce_git_weight', default=0.0, type=float, help='weight for infonce loss from github') 
+parser.add_argument('--model_usl', default=False, type=boolean_string, help='whether to use ModelUSL as Model')
 
 
 parser.add_argument('--gpu', default='0,1,2,3', type=str, help='gpu id')
