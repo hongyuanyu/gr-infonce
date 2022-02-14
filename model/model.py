@@ -150,7 +150,6 @@ class Model:
 
         _time1 = datetime.now()
         for seq, label, batch_frame in train_loader:
-            set_trace()
             #############################################################
             if self.config['DDP'] and self.config['restore_iter'] > 0 and \
                 self.config['restore_iter'] % self.triplet_sampler.total_batch_per_world == 0:
