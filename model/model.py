@@ -25,6 +25,7 @@ from .network.sync_batchnorm import DataParallelWithCallback
 from pdb import set_trace
 import torch.nn.functional as F
 import pickle 
+from info_nce import InfoNCE
 
 class Model:
     def __init__(self, config):
@@ -58,6 +59,7 @@ class Model:
             self.mem_bank = torch.zeros(num_of_id, sum(self.config['bin_num']), self.config['hidden_dim']+4).cuda()  #min, max, mean, sigma
             print('self.mem_bank.shape', self.mem_bank.shape)
             self.mem_statistic = list()
+
     def build_data(self):
         # data augment
         if self.config['dataset_augment']:
@@ -92,6 +94,9 @@ class Model:
             self.ap_mode = 'random'  # 'all' 'centor'  'random'
             self.an_mode = 'random'  # 'all' 'centor'  'random'
             self.infonce_loss = InfonceLoss(temperature, self.config['batch_size'], self.ap_mode, self.an_mode).float().cuda()
+
+            self.infonce_loss_git = InfoNCE(negative_mode='paired')
+
             if self.config['DDP']:
                 self.encoder_triplet_loss = DistributedLossWrapper(self.infonce_loss, dim=1)
 
@@ -104,6 +109,8 @@ class Model:
 
         if self.config['self_supervised_weight'] > 0:
             self.infonce_loss_metric = [[]]
+        if self.config['infonce_git_weight'] > 0:
+            self.infonce_git_loss_metric = [[]]
             
         self.total_loss_metric = []
     
@@ -143,6 +150,7 @@ class Model:
 
         _time1 = datetime.now()
         for seq, label, batch_frame in train_loader:
+            set_trace()
             #############################################################
             if self.config['DDP'] and self.config['restore_iter'] > 0 and \
                 self.config['restore_iter'] % self.triplet_sampler.total_batch_per_world == 0:
@@ -185,6 +193,18 @@ class Model:
                     encoder_feature[batch_size:,:,:].view(self.config['batch_size'][0],self.config['batch_size'][1],bins, dim))
                 loss += infonce_loss.mean() * self.config['self_supervised_weight']
                 self.infonce_loss_metric[0].append(infonce_loss.mean().data.cpu().numpy())
+            #######infonce_git#########
+            if self.config['infonce_git_weight'] > 0:
+                query = encoder_feature[:batch_size,:,:].view(batch_size, -1)
+                positive_key = encoder_feature[batch_size:,:,:].view(batch_size, -1)
+                negative_keys = []
+                for i in range(batch_size):
+                    negative_keys.append(positive_key[torch.arange(positive_key.size(0))!=i])
+                negative_keys = torch.stack(negative_keys, dim=0)
+
+                infonce_loss_git = self.infonce_loss_git(query, positive_key, negative_keys)
+                loss += infonce_loss_git.mean() * self.config['infonce_git_weight']
+                self.infonce_git_loss_metric[0].append(infonce_loss_git.mean().data.cpu().numpy())
 
             self.total_loss_metric.append(loss.data.cpu().numpy())
 
@@ -312,6 +332,13 @@ class Model:
             loss_metric = self.infonce_loss_metric[0]
             loss_weight = self.config['self_supervised_weight']
             loss_info = 'ap_mode={},an_mode={}'.format(self.ap_mode, self.an_mode)
+            print_loss_info(loss_name, loss_metric, loss_weight, loss_info)
+
+        if self.config['infonce_git_weight'] > 0:
+            loss_name = 'InfoNCE_git'
+            loss_metric = self.infonce_git_loss_metric[0]
+            loss_weight = self.config['infonce_git_weight']
+            loss_info = 'paired'
             print_loss_info(loss_name, loss_metric, loss_weight, loss_info)
 
         print('{:#^30}: total_loss_metric={:.6f}'.format('Total Loss', np.mean(self.total_loss_metric)))

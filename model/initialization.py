@@ -5,6 +5,7 @@ from .data import load_data
 from .model import Model
 from .model_contrastive import ModelContrastive
 from .model_mix import ModelMix
+from .model_usl import ModelUSL
 from pdb import set_trace
 
 def initialize_data(config):
@@ -20,6 +21,8 @@ def initialize_model(config):
         m = ModelContrastive(config)
     elif config['model_mix']:
         m = ModelMix(config)
+    #elif  config['self_supervised_weight']:
+    #    m = ModelUSL(config)
     else:
         m = Model(config)
     print("Model initialization complete.")
@@ -46,8 +49,8 @@ def initialization(config):
         config['train_source_noisy'] = train_source_noisy
                 
         model = initialize_model(config)
-        
     else:
+        config['pid_num'] = 73+43
         train_source, test_source = initialize_data(config)
         config['train_source'] = train_source
         config['test_source'] = test_source

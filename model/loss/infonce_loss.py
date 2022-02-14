@@ -33,7 +33,6 @@ class InfonceLoss(nn.Module):
             #反例取随机/中心/所有
             negative_index = np.delete(range(self.batch_size[0]),i)
             if self.an_mode == 'all':
-                
                 #有（batch_size[0]-1）*batch_size[1]个an对
                 an = torch.matmul(feature[i,:,:,:], feature_aug[negative_index,:,:,:].permute(0,1,3,2)) 
                 #(batch_size[0]-1)*bins*batch_size[1]*batch_size[1]
@@ -43,10 +42,12 @@ class InfonceLoss(nn.Module):
                 #(batch_size[0]-1)*bins*batch_size[1]
                 an_exp = torch.exp(an).sum(0).sum(1)
             elif self.an_mode == 'random':
+                an_exp = 0
                 index = np.random.randint(0,self.batch_size[1],size=self.batch_size[0]-1)
-                an = torch.matmul(feature[i,:,:,:], feature_aug[negative_index,:,index,:].permute(0,2,1))
+                for j in range(self.batch_size[0]-1):
+                    an = torch.matmul(feature[i,:,:,:], feature_aug[negative_index[j],:,index[j],:].permute(1,0))
+                    an_exp += torch.exp(an).sum(0)
                 #(batch_size[0]-1)*bins*batch_size[1]
-                an_exp = torch.exp(an).sum(0).sum(1)
 
             loss += -torch.log(ap_exp/an_exp)
         return loss.mean()

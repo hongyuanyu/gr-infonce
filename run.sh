@@ -22,9 +22,9 @@ export MODEL=casia_b_idnoise44_rt64_train_base_bin16_entropy && \
 
 #Eval visualize_feature.py  test.py
 python -u test.py \
-    --dataset_path /home/yuweichen/workspace/data64pkl \
+    --dataset_path /home/yuweichen/workspace/shared/casia_b_idnoise44/silhouettes_cut_pkl_idnoise44 \
     --bin_num 16 \
-    --batch_size 1 --gpu 0,1,2,3 --test_set test \
+    --batch_size 1 --gpu 4,5,6,7 --test_set test \
     --reranking False --euc_or_cos_dist 'euc' \
     --resume False --ckp_prefix 
 
@@ -93,9 +93,9 @@ export MODEL=64_35k_cl0.6_clean_noneview_15 && \
     --pid_num 73\
     2>&1 | tee ./log/$MODEL.log
 
-export MODEL=64_35k_cl0.6_da_multiloss && \
+export MODEL=64_35k_cl0.6_for_test && \
     python -u train.py \
-    --dataset CASIA-B --resolution 64 --dataset_path /home/yuweichen/workspace/data64pkl \
+    --dataset CASIA-B --resolution 64 --dataset_path /home/yuweichen/workspace/shared/casia_b_idnoise44/silhouettes_cut_pkl_idnoise44 \
     --milestones 10000 20000 --total_iter 20000 --warmup False --restore_iter 0\
     --more_channels False --bin_num 16 --hidden_dim 256 \
     --encoder_entropy_weight 0.1 --encoder_triplet_weight 1.0 \
@@ -103,7 +103,19 @@ export MODEL=64_35k_cl0.6_da_multiloss && \
     --AMP False --DDP False --reranking False \
     --mem_bank False --triplet_type 'full' --clean_subset False \
     --pid_num 73 \
-    --dataset_augment False --self_supervised_weight 0.0 \
+    --dataset_augment True --self_supervised_weight 0.1 --infonce_git_weight 0.1 \
     2>&1 | tee ./log/$MODEL.log
     
+export MODEL=64_35k_cl0.6_twostage && \
+    python -u train.py \
+    --dataset CASIA-B --resolution 64 --dataset_path /home/yuweichen/workspace/shared/casia_b_idnoise44/silhouettes_cut_pkl_idnoise44 \
+    --milestones 10000 20000 30000 --total_iter 20000 --warmup False --restore_iter 20000\
+    --more_channels False --bin_num 16 --hidden_dim 256 \
+    --encoder_entropy_weight 0.1 --encoder_triplet_weight 1.0 \
+    --model_name $MODEL --gpu 0,1,2,3 --lr 0.1 \
+    --AMP False --DDP False --reranking False \
+    --mem_bank False --triplet_type 'full' --clean_subset False \
+    --pid_num 73 --restore_name  /home/yuweichen/workspace/noisy_gait/checkpoint/64_35k_cl0.6_baseline/64_35k_cl0.6_baseline_CASIA-B_73_False-20000-encoder.ptm\
+    --dataset_augment False --self_supervised_weight 0.1 \
+    2>&1 | tee ./log/$MODEL.log
     
