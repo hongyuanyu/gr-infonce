@@ -28,22 +28,23 @@ class InfonceLoss(nn.Module):
                 ap_exp = torch.exp(ap).sum(0)
             elif self.ap_mode == 'random':
                 index = np.random.randint(0,self.batch_size[1])
-                ap = torch.matmul(feature[i,:,:,:], feature_aug[i,:,index,:].permute(0,2,1))  #bins*batch_size[1]
-                ap_exp = torch.exp(ap).sum(0)
+                ap = torch.matmul(feature[i,:,:,:], feature_aug[i,:,index,:].unsqueeze(2))  #bins*batch_size[1]
+                ap_exp = torch.exp(ap).sum(0).sum(1)
             #反例取随机/中心/所有
+            negative_index = np.delete(range(self.batch_size[0]),i)
             if self.an_mode == 'all':
-                negative_index = np.delete(range(self.batch_size[0]),i)
+                
                 #有（batch_size[0]-1）*batch_size[1]个an对
                 an = torch.matmul(feature[i,:,:,:], feature_aug[negative_index,:,:,:].permute(0,1,3,2)) 
                 #(batch_size[0]-1)*bins*batch_size[1]*batch_size[1]
                 an_exp = torch.exp(an).sum(0).sum(0).sum(1) #bins
             elif self.an_mode == 'centor':
-                an = torch.matmul(feature[i,:,:,:], feature_aug[negative_index,:,:,:].permute(0,2,1).mean(0))  
+                an = torch.matmul(feature[i,:,:,:], feature_aug[negative_index,:,:,:].permute(0,1,3,2).mean(0))  
                 #(batch_size[0]-1)*bins*batch_size[1]
                 an_exp = torch.exp(an).sum(0).sum(1)
             elif self.an_mode == 'random':
                 index = np.random.randint(0,self.batch_size[1],size=self.batch_size[0]-1)
-                an = torch.matmul(feature[i,:,:,:], feature_aug[negative_index,:,index[:i],:].permute(0,2,1))
+                an = torch.matmul(feature[i,:,:,:], feature_aug[negative_index,:,index,:].permute(0,2,1))
                 #(batch_size[0]-1)*bins*batch_size[1]
                 an_exp = torch.exp(an).sum(0).sum(1)
 

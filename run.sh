@@ -103,7 +103,7 @@ export MODEL=64_35k_cl0.6_da_multiloss && \
     --AMP False --DDP False --reranking False \
     --mem_bank False --triplet_type 'full' --clean_subset False \
     --pid_num 73 \
-    --dataset_augment True --self_supervised_weight 0.1 \
+    --dataset_augment False --self_supervised_weight 0.0 \
     2>&1 | tee ./log/$MODEL.log
     
     

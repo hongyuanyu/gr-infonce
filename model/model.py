@@ -89,8 +89,8 @@ class Model:
                 self.encoder_triplet_loss = DistributedLossWrapper(self.encoder_triplet_loss, dim=1)
         if self.config['self_supervised_weight'] > 0:
             temperature = 0.07
-            self.ap_mode = 'all'  # 'all' 'centor'  'random'
-            self.an_mode = 'all'  # 'all' 'centor'  'random'
+            self.ap_mode = 'random'  # 'all' 'centor'  'random'
+            self.an_mode = 'random'  # 'all' 'centor'  'random'
             self.infonce_loss = InfonceLoss(temperature, self.config['batch_size'], self.ap_mode, self.an_mode).float().cuda()
             if self.config['DDP']:
                 self.encoder_triplet_loss = DistributedLossWrapper(self.infonce_loss, dim=1)
