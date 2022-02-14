@@ -109,13 +109,12 @@ export MODEL=64_35k_cl0.6_for_test && \
 export MODEL=64_35k_cl0.6_twostage && \
     python -u train.py \
     --dataset CASIA-B --resolution 64 --dataset_path /home/yuweichen/workspace/shared/casia_b_idnoise44/silhouettes_cut_pkl_idnoise44 \
-    --milestones 10000 20000 30000 --total_iter 20000 --warmup False --restore_iter 20000\
+    --milestones 10000 20000 30000 --total_iter 25000 --warmup False --restore_iter 20000\
     --more_channels False --bin_num 16 --hidden_dim 256 \
     --encoder_entropy_weight 0.1 --encoder_triplet_weight 1.0 \
-    --model_name $MODEL --gpu 0,1,2,3 --lr 0.1 \
-    --AMP False --DDP False --reranking False \
-    --mem_bank False --triplet_type 'full' --clean_subset False \
+    --model_name $MODEL --gpu 4,5,6,7 --lr 0.1 \
+    --AMP False --DDP False \
     --pid_num 73 --restore_name  /home/yuweichen/workspace/noisy_gait/checkpoint/64_35k_cl0.6_baseline/64_35k_cl0.6_baseline_CASIA-B_73_False-20000-encoder.ptm\
-    --dataset_augment False --self_supervised_weight 0.1 \
+    --dataset_augment True --self_supervised_weight 0.01 --infonce_git_weight 0.01 --da_iter 20000 --model_usl True\
     2>&1 | tee ./log/$MODEL.log
     

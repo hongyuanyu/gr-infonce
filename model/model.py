@@ -197,17 +197,18 @@ class Model:
                 batch_size = self.config['batch_size'][0] * self.config['batch_size'][1]
                 batch_size_ = [self.config['batch_size'][0], self.config['batch_size'][1]]
                 query = encoder_feature[:batch_size,:,:].view(batch_size, -1)
-                positive_key = encoder_feature[batch_size:,:,:].view(batch_size, -1)
+                positive_key = encoder_feature[batch_size:,:,:].view(batch_size_[0],batch_size_[1], -1)
                 negative_keys = []
                 for i in range(batch_size_[0]):
                     negative_keys.append(positive_key[torch.arange(positive_key.size(0))!=i])
-
+                positive_key = positive_key.view(batch_size,-1)
                 negative_keys = torch.stack(negative_keys, dim=0)  # 8,7,16,4096
-                negative_keys = negative_keys.permute(0,2,1,3).contiguous().view(batch_size,batch_size_[0],-1)
+                negative_keys = negative_keys.permute(0,2,1,3).contiguous().view(batch_size_[0],(batch_size_[0]-1)*batch_size_[1],-1)  # 8,7*16,4096
+                negative_keys = negative_keys.unsqueeze(2).repeat(1,batch_size_[1],1,1)
+                negative_keys = negative_keys.view(batch_size, (batch_size_[0]-1)*batch_size_[1], -1)
                 infonce_loss_git = self.infonce_loss_git(query, positive_key, negative_keys)
                 loss += infonce_loss_git.mean() * self.config['infonce_git_weight']
                 self.infonce_git_loss_metric[0].append(infonce_loss_git.mean().data.cpu().numpy())
-
             self.total_loss_metric.append(loss.data.cpu().numpy())
 
             if loss > 1e-9:
