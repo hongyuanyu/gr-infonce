@@ -34,6 +34,9 @@ parser.add_argument('--da_iter', default=20000, type=int, help='after this iter 
 parser.add_argument('--restore_name', default='', type=str, help='for writing logs')
 parser.add_argument('--infonce_git_weight', default=0.0, type=float, help='weight for infonce loss from github') 
 parser.add_argument('--model_usl', default=False, type=boolean_string, help='whether to use ModelUSL as Model')
+parser.add_argument('--model_twostream', default=False, type=boolean_string, help='whether to use Modeltwostream as Model')
+parser.add_argument('--mo', default=0.99, type=float, help='momentum') 
+parser.add_argument('--model_mo', default=False, type=boolean_string, help='whether to use ModelCo as Model')
 
 
 parser.add_argument('--gpu', default='0,1,2,3', type=str, help='gpu id')
@@ -50,7 +53,7 @@ parser.add_argument('--pid_num', default=73, type=int, help='split train and tes
 parser.add_argument('--pid_shuffle', default=False, type=boolean_string, help='shuffle dataset or not')
 parser.add_argument('--num_workers', default=48, type=int, help='workers to load data')
 parser.add_argument('--frame_num', default=30, type=int, help='frames per sequence')
-parser.add_argument('--batch_size', default=[8, 16], type=int, nargs='+', help='batch size')
+parser.add_argument('--batch_size', default=[8, 8], type=int, nargs='+', help='batch size')
 parser.add_argument('--sample_type', default='random', type=str, choices=['random', 'random_fn', 'all'], help='sample type')
 parser.add_argument('--min_frame_num', default=20, type=int, help='min frame_num for random_fn')
 parser.add_argument('--max_frame_num', default=40, type=int, help='max frame_num for random_fn')

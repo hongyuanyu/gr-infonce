@@ -1,11 +1,15 @@
 import os
 from copy import deepcopy
 import numpy as np
+
 from .data import load_data
 from .model import Model
 from .model_contrastive import ModelContrastive
 from .model_mix import ModelMix
 from .model_usl import ModelUSL
+from .model_twostream import Model2Stream
+from .model_mo import ModelMo
+
 from pdb import set_trace
 
 def initialize_data(config):
@@ -23,6 +27,10 @@ def initialize_model(config):
         m = ModelMix(config)
     elif  config['model_usl']:
         m = ModelUSL(config)
+    elif  config['model_twostream']:
+        m = Model2Stream(config)
+    elif  config['model_mo']:
+        m = ModelMo(config)
     else:
         m = Model(config)
     print("Model initialization complete.")

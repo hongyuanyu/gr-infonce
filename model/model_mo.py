@@ -27,8 +27,7 @@ import torch.nn.functional as F
 import pickle 
 from info_nce import InfoNCE
 
-
-class ModelUSL:
+class ModelMo:
     def __init__(self, config):
         self.config = deepcopy(config)
         if self.config['DDP']:
@@ -42,11 +41,17 @@ class ModelUSL:
         
         self.config.update({'num_id': len(self.config['train_source'].label_set)})
         self.encoder = GaitSet(self.config).float().cuda()
-        #self.rgb_encoder = timm.create_model('efficientnet_b2a', pretrained=True).float().cuda()
+        self.encoder_mo = GaitSet(self.config).float().cuda()
+        for param_b, param_m in zip(self.encoder.parameters(), self.encoder_mo.parameters()):
+            param_m.data.copy_(param_b.data)  # initialize
+            param_m.requires_grad = False  # not update by gradient
+
         if self.config['DDP']:
             self.encoder = DDP(self.encoder, device_ids=[self.config['local_rank']], output_device=self.config['local_rank'], find_unused_parameters=True)
+            self.encoder_mo = DDP(self.encoder_mo, device_ids=[self.config['local_rank']], output_device=self.config['local_rank'], find_unused_parameters=True)
         else:
             self.encoder = DataParallelWithCallback(self.encoder)
+            self.encoder_mo = DataParallelWithCallback(self.encoder_mo)
         self.build_data()
         self.build_loss()
         self.build_loss_metric()
@@ -61,14 +66,15 @@ class ModelUSL:
             self.mem_bank = torch.zeros(num_of_id, sum(self.config['bin_num']), self.config['hidden_dim']+4).cuda()  #min, max, mean, sigma
             print('self.mem_bank.shape', self.mem_bank.shape)
             self.mem_statistic = list()
+
     def build_data(self):
         # data augment
         if self.config['dataset_augment']:
             self.data_transforms = build_data_transforms(random_erasing=False, random_rotate=False, \
                                         random_horizontal_flip=False, random_pad_crop=False, cloth_dilate=False, cloth_erode=False,\
                                         resolution=self.config['resolution'], random_seed=self.random_seed) 
-            self.data_transforms_new = build_data_transforms(random_erasing=True, random_rotate=True, \
-                                        random_horizontal_flip=True, random_pad_crop=True, cloth_dilate=True, cloth_erode=True,\
+            self.data_transforms_new = build_data_transforms(random_erasing=True, random_rotate=True,\
+                                        random_horizontal_flip=True, random_pad_crop=True, cloth_dilate=False, cloth_erode=False, \
                                         resolution=self.config['resolution'], random_seed=self.random_seed+1) 
         
         #triplet sampler
@@ -92,16 +98,14 @@ class ModelUSL:
                 self.encoder_triplet_loss = DistributedLossWrapper(self.encoder_triplet_loss, dim=1)
         if self.config['self_supervised_weight'] > 0:
             temperature = 0.07
-            self.ap_mode = 'pair'  # 'all' 'centor'  'random' 'pair'
-            self.an_mode = 'pair'  # 'all' 'centor'  'random' 'pair'
+            self.ap_mode = 'all'  # 'all' 'centor'  'random'
+            self.an_mode = 'all'  # 'all' 'centor'  'random'
             self.infonce_loss = InfonceLoss(temperature, self.config['batch_size'], self.ap_mode, self.an_mode).float().cuda()
-            
-            if self.config['DDP']:
-                self.infonce_loss = DistributedLossWrapper(self.infonce_loss, dim=1)
-        if self.config['infonce_git_weight'] > 0:
+
             self.infonce_loss_git = InfoNCE(negative_mode='paired')
+
             if self.config['DDP']:
-                self.infonce_git_loss = DistributedLossWrapper(self.infonce_git_loss, dim=1)
+                self.encoder_triplet_loss = DistributedLossWrapper(self.infonce_loss, dim=1)
 
     def build_loss_metric(self):
         if self.config['encoder_entropy_weight'] > 0:
@@ -137,10 +141,8 @@ class ModelUSL:
 
     def fit(self):
         self.encoder.train()
-        #self.rgb_encoder.train()
-
         if self.config['restore_iter'] > 0:
-            self.load(self.config['restore_iter'], self.config['restore_name'])
+            self.load(self.config['restore_iter'])
         else:
             self.config['restore_iter'] = 0
 
@@ -155,7 +157,9 @@ class ModelUSL:
 
         _time1 = datetime.now()
         for seq, label, batch_frame in train_loader:
-            #set_trace()
+            ###update encoder_mo###############
+            for param_b, param_m in zip(self.encoder.parameters(), self.encoder_mo.parameters()):
+                    param_m.data = param_m.data * self.config['mo'] + param_b.data * (1. - self.config['mo'])
             #############################################################
             if self.config['DDP'] and self.config['restore_iter'] > 0 and \
                 self.config['restore_iter'] % self.triplet_sampler.total_batch_per_world == 0:
@@ -172,87 +176,12 @@ class ModelUSL:
             with autocast(enabled=self.config['AMP']):
                 encoder_feature, encoder_bn_feature, encoder_cls_score \
                 = self.encoder(seq, self.config['restore_iter'], batch_frame, target_label)
+                encoder_feature_mo, encoder_bn_feature_mo, encoder_cls_score_mo \
+                    = self.encoder_mo(seq, self.config['restore_iter'], batch_frame, target_label)
 
-            loss = torch.zeros(1).to(encoder_feature.device)
-
-            if self.config['encoder_entropy_weight'] > 0:
-                entropy_loss_metric = 0
-                for i in range(encoder_cls_score.size(1)):
-                    entropy_loss_metric += self.encoder_entropy_loss(encoder_cls_score[:, i, :].float(), target_label, target_label, l=0, loss_statistic=False)
-                entropy_loss_metric = entropy_loss_metric / encoder_cls_score.size(1)
-                loss += entropy_loss_metric * self.config['encoder_entropy_weight']
-                self.encoder_entropy_loss_metric[0].append(entropy_loss_metric.mean().data.cpu().numpy())
-
-            if self.config['encoder_triplet_weight'] > 0:
-                encoder_triplet_feature = encoder_feature.float().permute(1, 0, 2).contiguous()
-                triplet_label = target_label.unsqueeze(0).repeat(encoder_triplet_feature.size(0), 1)
-                triplet_loss_metric, nonzero_num = self.encoder_triplet_loss(encoder_triplet_feature, triplet_label, triplet_label, seq_type=None, loss_statistic=False)
-                loss += triplet_loss_metric.mean() * self.config['encoder_triplet_weight']
-                self.encoder_triplet_loss_metric[0].append(triplet_loss_metric.mean().data.cpu().numpy())
-                self.encoder_triplet_loss_metric[1].append(nonzero_num.mean().data.cpu().numpy())
-
-            self.total_loss_metric.append(loss.data.cpu().numpy())
-
-            if loss > 1e-9:
-                if self.config['AMP']:
-                    self.scaler.scale(loss).backward()
-                    self.scaler.step(self.optimizer)
-                    self.scaler.update()
-                    self.scheduler.step()
-                else:  
-                    loss.backward()
-                    self.optimizer.step()
-                    self.scheduler.step()
-            time3 = datetime.now()
-            if self.config['mem_bank']:
-                if self.config['restore_iter'] % 100 == 0:
-                    with torch.no_grad():
-                        self.mem_bank = self.renew_mem_bank_all(self.mem_bank)
-                        self.mem_statistic = self.statistic(self.mem_statistic, self.config['restore_iter'], self.mem_bank)
-                    print('time for mem_bank',datetime.now() - time3)
-
-            
-            if self.config['restore_iter'] % 100 == 0:
-                if (not self.config['DDP']) or (self.config['DDP'] and dist.get_rank() == 0):
-                    print(datetime.now() - _time1)
-                    _time1 = datetime.now()
-                    self.print_info()
-                self.build_loss_metric()
-            if self.config['restore_iter'] % 100 == 0 or self.config['restore_iter'] == self.config['total_iter']:
-                if (not self.config['DDP']) or (self.config['DDP'] and dist.get_rank() == 0):
-                    self.save()
-            if self.config['restore_iter'] == self.config['da_iter']:
-                break
-            self.config['restore_iter'] += 1
-
-        ###############DA and USL####################################
-        self.encoder.train()
-        
-        train_loader = tordata.DataLoader(
-            dataset=self.config['train_source'],
-            batch_sampler=self.triplet_sampler,
-            collate_fn=self.collate_fn,
-            num_workers=self.config['num_workers'])
-
-        for seq, label, batch_frame in train_loader:
-
-            #############################################################
-            if self.config['DDP'] and self.config['restore_iter'] > 0 and \
-                self.config['restore_iter'] % self.triplet_sampler.total_batch_per_world == 0:
-                self.triplet_sampler.set_random_seed(self.triplet_sampler.random_seed+1)
-            #############################################################
-            self.optimizer.zero_grad()
-
-            seq = self.np2var(seq).float()
-            target_label = [train_label_set.index(l) for l in label]
-            target_label = self.np2var(np.asarray(target_label)).long()
-            if batch_frame is not None:
-                batch_frame = self.np2var(batch_frame).int()
-
-            with autocast(enabled=self.config['AMP']):
-                encoder_feature, encoder_bn_feature, encoder_cls_score \
-                = self.encoder(seq, self.config['restore_iter'], batch_frame, target_label)
-
+            encoder_feature = torch.cat((encoder_feature, encoder_feature_mo),0)
+            encoder_cls_score = torch.cat((encoder_cls_score, encoder_cls_score_mo),0)
+            target_label = torch.cat((target_label,target_label),0)
             loss = torch.zeros(1).to(encoder_feature.device)
 
             if self.config['encoder_entropy_weight'] > 0:
@@ -272,17 +201,14 @@ class ModelUSL:
                 self.encoder_triplet_loss_metric[1].append(nonzero_num.mean().data.cpu().numpy())
 
             if self.config['self_supervised_weight'] > 0:
-                if self.config['restore_iter'] == 20005:
-                    set_trace()
                 batch_size = self.config['batch_size'][0] * self.config['batch_size'][1]
                 _, bins, dim = encoder_feature.shape
                 infonce_loss = self.infonce_loss(encoder_feature[:batch_size,:,:].view(self.config['batch_size'][0],self.config['batch_size'][1],bins, dim),
                     encoder_feature[batch_size:,:,:].view(self.config['batch_size'][0],self.config['batch_size'][1],bins, dim))
                 loss += infonce_loss.mean() * self.config['self_supervised_weight']
                 self.infonce_loss_metric[0].append(infonce_loss.mean().data.cpu().numpy())
-
+            #######infonce_git#########
             if self.config['infonce_git_weight'] > 0:
-                
                 batch_size = self.config['batch_size'][0] * self.config['batch_size'][1]
                 batch_size_ = [self.config['batch_size'][0], self.config['batch_size'][1]]
                 query = encoder_feature[:batch_size,:,:].view(batch_size, -1)
@@ -310,6 +236,9 @@ class ModelUSL:
                     loss.backward()
                     self.optimizer.step()
                     self.scheduler.step()
+                
+                
+
             time3 = datetime.now()
             if self.config['mem_bank']:
                 if self.config['restore_iter'] % 100 == 0:
@@ -418,19 +347,23 @@ class ModelUSL:
             loss_weight = self.config['encoder_triplet_weight']
             loss_info = 'nonzero_num={:.6f}, margin={}'.format(np.mean(self.encoder_triplet_loss_metric[1]), self.config['encoder_triplet_margin'])
             print_loss_info(loss_name, loss_metric, loss_weight, loss_info)
+
         if self.config['self_supervised_weight'] > 0:
             loss_name = 'InfoNCE'
             loss_metric = self.infonce_loss_metric[0]
             loss_weight = self.config['self_supervised_weight']
             loss_info = 'ap_mode={},an_mode={}'.format(self.ap_mode, self.an_mode)
             print_loss_info(loss_name, loss_metric, loss_weight, loss_info)
+
         if self.config['infonce_git_weight'] > 0:
             loss_name = 'InfoNCE_git'
             loss_metric = self.infonce_git_loss_metric[0]
             loss_weight = self.config['infonce_git_weight']
             loss_info = 'paired'
             print_loss_info(loss_name, loss_metric, loss_weight, loss_info)
+
         print('{:#^30}: total_loss_metric={:.6f}'.format('Total Loss', np.mean(self.total_loss_metric)))
+        
         #optimizer
         print('{:#^30}: type={}, base_lr={:.6f}, base_weight_decay={:.6f}'.format( \
             'Optimizer', self.config['optimizer_type'], self.optimizer.param_groups[0]['lr'], self.optimizer.param_groups[0]['weight_decay']))            
@@ -513,8 +446,7 @@ class ModelUSL:
         def transform_seq_new(index):
             sample = seqs[index]
             return self.data_transforms_new(sample)
-
-        if self.config['dataset_augment'] and self.config['restore_iter'] >= self.config['da_iter']:
+        if self.config['dataset_augment']:
             seqs_original = list(map(transform_seq, range(len(seqs))))  
             seqs_da = list(map(transform_seq_new, range(len(seqs)))) 
             seqs = [seqs_original,seqs_da]
@@ -588,19 +520,18 @@ class ModelUSL:
                    osp.join('checkpoint', self.config['model_name'],
                             '{}-{:0>5}-optimizer.ptm'.format(self.config['save_name'], self.config['restore_iter'])))
 
-    def load(self, restore_iter, restore_name):
+    def load(self, restore_iter):
         if self.config['DDP']:
             map_location = {'cuda:%d' % 0: 'cuda:%d' % dist.get_rank()}
         else:
             map_location = None
-        #encoder_ckp = torch.load(osp.join('checkpoint', self.config['model_name'], '{}-{:0>5}-encoder.ptm'.format(self.config['save_name'], restore_iter)), map_location=map_location)
-        #set_trace()
-        encoder_ckp = torch.load(restore_name)
+        encoder_ckp = torch.load(osp.join(
+            'checkpoint', self.config['model_name'],
+            '{}-{:0>5}-encoder.ptm'.format(self.config['save_name'], restore_iter)), map_location=map_location)
         self.encoder.load_state_dict(encoder_ckp)
-        #optimizer_ckp = torch.load(osp.join(
-        #    'checkpoint', self.config['model_name'],
-        #    '{}-{:0>5}-optimizer.ptm'.format(self.config['save_name'], restore_iter)), map_location=map_location)
-        optimizer_ckp = torch.load(restore_name[:-11]+'optimizer.ptm')
+        optimizer_ckp = torch.load(osp.join(
+            'checkpoint', self.config['model_name'],
+            '{}-{:0>5}-optimizer.ptm'.format(self.config['save_name'], restore_iter)), map_location=map_location)
         self.optimizer.load_state_dict(optimizer_ckp[0])
         self.scheduler.load_state_dict(optimizer_ckp[1])  
 
