@@ -62,11 +62,11 @@ class ModelUSL:
     def build_data(self):
         # data augment
         if self.config['dataset_augment']:
-            self.data_transforms = build_data_transforms(random_erasing=True, random_rotate=False, \
-                                        random_horizontal_flip=False, random_pad_crop=False, cloth_dilate=False,\
+            self.data_transforms = build_data_transforms(random_erasing=True, random_rotate=True, \
+                                        random_horizontal_flip=True, random_pad_crop=True, cloth_dilate=False,\
                                         resolution=self.config['resolution'], random_seed=self.random_seed) 
-            self.data_transforms_new = build_data_transforms(random_erasing=False, random_rotate=False, \
-                                        random_horizontal_flip=False, random_pad_crop=True, cloth_dilate=False,\
+            self.data_transforms_new = build_data_transforms(random_erasing=True, random_rotate=True, \
+                                        random_horizontal_flip=True, random_pad_crop=True, cloth_dilate=False,\
                                         resolution=self.config['resolution'], random_seed=self.random_seed+1) 
         
         #triplet sampler
@@ -93,9 +93,13 @@ class ModelUSL:
             self.ap_mode = 'pair'  # 'all' 'centor'  'random' 'pair'
             self.an_mode = 'pair'  # 'all' 'centor'  'random' 'pair'
             self.infonce_loss = InfonceLoss(temperature, self.config['batch_size'], self.ap_mode, self.an_mode).float().cuda()
+            
+            if self.config['DDP']:
+                self.infonce_loss = DistributedLossWrapper(self.infonce_loss, dim=1)
+        if self.config['infonce_git_weight'] > 0:
             self.infonce_loss_git = InfoNCE(negative_mode='paired')
             if self.config['DDP']:
-                self.encoder_triplet_loss = DistributedLossWrapper(self.infonce_loss, dim=1)
+                self.infonce_git_loss = DistributedLossWrapper(self.infonce_git_loss, dim=1)
 
     def build_loss_metric(self):
         if self.config['encoder_entropy_weight'] > 0:
@@ -226,7 +230,7 @@ class ModelUSL:
             num_workers=self.config['num_workers'])
 
         for seq, label, batch_frame in train_loader:
-
+            set_trace()
             #############################################################
             if self.config['DDP'] and self.config['restore_iter'] > 0 and \
                 self.config['restore_iter'] % self.triplet_sampler.total_batch_per_world == 0:
@@ -263,6 +267,8 @@ class ModelUSL:
                 self.encoder_triplet_loss_metric[1].append(nonzero_num.mean().data.cpu().numpy())
 
             if self.config['self_supervised_weight'] > 0:
+                if self.config['restore_iter'] == 20005:
+                    set_trace()
                 batch_size = self.config['batch_size'][0] * self.config['batch_size'][1]
                 _, bins, dim = encoder_feature.shape
                 infonce_loss = self.infonce_loss(encoder_feature[:batch_size,:,:].view(self.config['batch_size'][0],self.config['batch_size'][1],bins, dim),
@@ -279,7 +285,6 @@ class ModelUSL:
                 negative_keys = []
                 for i in range(batch_size_[0]):
                     negative_keys.append(positive_key[torch.arange(positive_key.size(0))!=i])
-                set_trace()
                 positive_key = positive_key.view(batch_size,-1)
                 negative_keys = torch.stack(negative_keys, dim=0)  # 8,7,16,4096
                 negative_keys = negative_keys.permute(0,2,1,3).contiguous().view(batch_size_[0],(batch_size_[0]-1)*batch_size_[1],-1)  # 8,7*16,4096
@@ -408,7 +413,6 @@ class ModelUSL:
             loss_weight = self.config['encoder_triplet_weight']
             loss_info = 'nonzero_num={:.6f}, margin={}'.format(np.mean(self.encoder_triplet_loss_metric[1]), self.config['encoder_triplet_margin'])
             print_loss_info(loss_name, loss_metric, loss_weight, loss_info)
-
         if self.config['self_supervised_weight'] > 0:
             loss_name = 'InfoNCE'
             loss_metric = self.infonce_loss_metric[0]
@@ -422,7 +426,6 @@ class ModelUSL:
             loss_info = 'paired'
             print_loss_info(loss_name, loss_metric, loss_weight, loss_info)
         print('{:#^30}: total_loss_metric={:.6f}'.format('Total Loss', np.mean(self.total_loss_metric)))
-        
         #optimizer
         print('{:#^30}: type={}, base_lr={:.6f}, base_weight_decay={:.6f}'.format( \
             'Optimizer', self.config['optimizer_type'], self.optimizer.param_groups[0]['lr'], self.optimizer.param_groups[0]['weight_decay']))            

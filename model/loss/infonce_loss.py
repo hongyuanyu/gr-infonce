@@ -56,5 +56,6 @@ class InfonceLoss(nn.Module):
                 for j in range(self.batch_size[0]-1):
                     an = torch.matmul(feature[i,:,:,:], feature_aug[negative_index[j],:,:,:].permute(0,2,1)) #(batch_size[0]-1)*bins*batch_size[1]
                     an_exp += torch.exp(an).sum(0).sum(1)
+            
             loss += -torch.log(ap_exp/(ap_exp+an_exp))
         return loss.mean()

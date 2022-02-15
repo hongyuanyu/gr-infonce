@@ -106,15 +106,14 @@ export MODEL=64_35k_cl0.6_for_test && \
     --dataset_augment True --self_supervised_weight 0.1 --infonce_git_weight 0.1 \
     2>&1 | tee ./log/$MODEL.log
     
-export MODEL=64_35k_cl0.6_twostage && \
+export MODEL=64_35k_cl0.6_for_test && \
     python -u train.py \
-    --dataset CASIA-B --resolution 64 --dataset_path /home/yuweichen/workspace/shared/casia_b_idnoise44/silhouettes_cut_pkl_idnoise44 \
-    --milestones 10000 20000 30000 --total_iter 25000 --warmup False --restore_iter 20000\
-    --more_channels False --bin_num 16 --hidden_dim 256 \
+    --dataset_path /home/yuweichen/workspace/shared/casia_b_idnoise44/silhouettes_cut_pkl_idnoise44 \
+    --milestones 10000 20000 30000 --total_iter 25000 --warmup False --restore_iter 20000 \
+    --bin_num 16 \
     --encoder_entropy_weight 0.1 --encoder_triplet_weight 1.0 \
     --model_name $MODEL --gpu 4,5,6,7 --lr 0.1 \
-    --AMP False --DDP False \
-    --pid_num 73 --restore_name  /home/yuweichen/workspace/noisy_gait/checkpoint/64_35k_cl0.6_baseline/64_35k_cl0.6_baseline_CASIA-B_73_False-20000-encoder.ptm\
-    --dataset_augment True --self_supervised_weight 0.01 --infonce_git_weight 0.01 --da_iter 20000 --model_usl True\
+    --restore_name  /home/yuweichen/workspace/noisy_gait/checkpoint/64_35k_cl0.6_baseline/64_35k_cl0.6_baseline_CASIA-B_73_False-20000-encoder.ptm\
+    --dataset_augment True --self_supervised_weight 0.0 --infonce_git_weight 0.01 --da_iter 20000 --model_usl True\
     2>&1 | tee ./log/$MODEL.log
     

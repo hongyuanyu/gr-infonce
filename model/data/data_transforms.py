@@ -196,10 +196,26 @@ class ClothDilate(object):
             img_dilate = np.array(img_dilate).astype('float32')
             return img_dilate
 
+class ClothErode(object):
+    def __init__(self, prob=0.5, erode_pos=[8,56]):
+        self.prob = prob
+        self.erode_pos = erode_pos
+        self.erode_kernal = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3,3))
 
+    def __call__(self, seq):
+        if random.uniform(0, 1) >= self.prob:
+            return seq
+        else:
+            _, dh, dw = seq.shape
+            seq = [cut_img(seq[tmp, :, :], dh, dw) for tmp in range(seq.shape[0])]
+            img_erode = deepcopy(seq)
+            for tmp in range(len(seq)):
+                img_erode[tmp][self.erode_pos[0]:self.erode_pos[1],:] = cv2.erode(seq[tmp][self.erode_pos[0]:self.erode_pos[1],:], self.erode_kernal, 1)
+            img_erode = np.array(img_erode).astype('float32')
+            return img_erode
 
 def build_data_transforms(random_erasing=False, random_rotate=False, \
-        random_horizontal_flip=False, random_pad_crop=False, cloth_dilate=False, resolution=64, random_seed=2019):
+        random_horizontal_flip=False, random_pad_crop=False, cloth_dilate=False, cloth_erode=False, resolution=64, random_seed=2019):
     np.random.seed(random_seed)
     random.seed(random_seed)
     print("random_seed={} for build_data_transforms".format(random_seed))
@@ -210,12 +226,13 @@ def build_data_transforms(random_erasing=False, random_rotate=False, \
     if random_rotate:
         object_list.append(RandomRotate(prob=0.5, degree=5))
     if random_erasing:
-        object_list.append(RandomErasing(prob=1, sl=0.02, sh=0.05, r1=0.3, per_frame=False))
+        object_list.append(RandomErasing(prob=0.5, sl=0.02, sh=0.05, r1=0.3, per_frame=False))
     if random_horizontal_flip:
-        object_list.append(RandomHorizontalFlip(prob=1))
+        object_list.append(RandomHorizontalFlip(prob=0.5))
     if cloth_dilate:
-        object_list.append(ClothDilate(prob=1))
-
+        object_list.append(ClothDilate(prob=0.5))
+    if cloth_erode:
+        object_list.append(ClothErode(prob=0.5))
 
     transform = T.Compose(object_list)
     return transform
@@ -275,6 +292,13 @@ if __name__ == "__main__":
     save_seq(seq_out, os.path.join(seq_dir, 'cloth_dilate_seq'))
     seq_merge = merge_seq(seq_out)
     merge_imgs.update({'cloth_dilate':merge_seq(seq_out)})
+    print(seq_out.shape, np.min(seq_out), np.max(seq_out), seq_out.dtype)
+
+    transform = build_data_transforms(cloth_erode=True)
+    seq_out = transform(seq_in.copy())
+    save_seq(seq_out, os.path.join(seq_dir, 'cloth_erode_seq'))
+    seq_merge = merge_seq(seq_out)
+    merge_imgs.update({'cloth_erode':merge_seq(seq_out)})
     print(seq_out.shape, np.min(seq_out), np.max(seq_out), seq_out.dtype)
 
     rows = 1

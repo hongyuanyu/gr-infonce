@@ -38,7 +38,7 @@ parser.add_argument('--model_usl', default=False, type=boolean_string, help='whe
 
 parser.add_argument('--gpu', default='0,1,2,3', type=str, help='gpu id')
 parser.add_argument('--model_name', default='GaitSet', type=str, help='checkpoint name for saving')
-parser.add_argument('--random_seed', default=2019, type=int, help='random_seed')
+parser.add_argument('--random_seed', default=2020, type=int, help='random_seed')
 #data
 parser.add_argument('--dataset', default='CASIA-B', type=str, help='name of dataset')
 parser.add_argument('--dataset_path', default=['/home2/ywc/workspace/noisy_output_pkl_6444'], type=str, nargs='+', help='path to dataset')
