@@ -53,7 +53,7 @@ parser.add_argument('--pid_num', default=73, type=int, help='split train and tes
 parser.add_argument('--pid_shuffle', default=False, type=boolean_string, help='shuffle dataset or not')
 parser.add_argument('--num_workers', default=48, type=int, help='workers to load data')
 parser.add_argument('--frame_num', default=30, type=int, help='frames per sequence')
-parser.add_argument('--batch_size', default=[8, 8], type=int, nargs='+', help='batch size')
+parser.add_argument('--batch_size', default=[8, 16], type=int, nargs='+', help='batch size')
 parser.add_argument('--sample_type', default='random', type=str, choices=['random', 'random_fn', 'all'], help='sample type')
 parser.add_argument('--min_frame_num', default=20, type=int, help='min frame_num for random_fn')
 parser.add_argument('--max_frame_num', default=40, type=int, help='max frame_num for random_fn')

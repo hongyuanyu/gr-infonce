@@ -101,7 +101,7 @@ class ModelMo:
             self.ap_mode = 'all'  # 'all' 'centor'  'random'
             self.an_mode = 'all'  # 'all' 'centor'  'random'
             self.infonce_loss = InfonceLoss(temperature, self.config['batch_size'], self.ap_mode, self.an_mode).float().cuda()
-
+        if self.config['infonce_git_weight'] > 0:
             self.infonce_loss_git = InfoNCE(negative_mode='paired')
 
             if self.config['DDP']:
@@ -189,14 +189,14 @@ class ModelMo:
                 for i in range(encoder_cls_score.size(1)):
                     entropy_loss_metric += self.encoder_entropy_loss(encoder_cls_score[:, i, :].float(), target_label, target_label, l=0, loss_statistic=False)
                 entropy_loss_metric = entropy_loss_metric / encoder_cls_score.size(1)
-                loss += entropy_loss_metric * self.config['encoder_entropy_weight']
+                loss += entropy_loss_metric * self.config['encoder_entropy_weight']* (3 - 2 * np.sin((self.config['restore_iter'] / self.config['total_iter'])*np.pi*0.5))
                 self.encoder_entropy_loss_metric[0].append(entropy_loss_metric.mean().data.cpu().numpy())
 
             if self.config['encoder_triplet_weight'] > 0:
                 encoder_triplet_feature = encoder_feature.float().permute(1, 0, 2).contiguous()
                 triplet_label = target_label.unsqueeze(0).repeat(encoder_triplet_feature.size(0), 1)
                 triplet_loss_metric, nonzero_num = self.encoder_triplet_loss(encoder_triplet_feature, triplet_label, triplet_label, seq_type=None, loss_statistic=False)
-                loss += triplet_loss_metric.mean() * self.config['encoder_triplet_weight']
+                loss += triplet_loss_metric.mean() * self.config['encoder_triplet_weight']* (0.9 + 0.1 * np.sin((self.config['restore_iter'] / self.config['total_iter'])*np.pi*0.5))
                 self.encoder_triplet_loss_metric[0].append(triplet_loss_metric.mean().data.cpu().numpy())
                 self.encoder_triplet_loss_metric[1].append(nonzero_num.mean().data.cpu().numpy())
 
@@ -208,11 +208,40 @@ class ModelMo:
                 loss += infonce_loss.mean() * self.config['self_supervised_weight']
                 self.infonce_loss_metric[0].append(infonce_loss.mean().data.cpu().numpy())
             #######infonce_git#########
+            # if self.config['infonce_git_weight'] > 0:
+                 #4个特征，[1,2,3,4] = [e,e_da,e_mo,e_da_mo]; mode_1是让e和e_da做nce，mode_2是让e和e_mo做
+                 #nce_mode = 'mode_1'
+                 #if nce_mode == 'mode_1':
+
+            #         batch_size = self.config['batch_size'][0] * self.config['batch_size'][1]
+            #         batch_size_ = [self.config['batch_size'][0], self.config['batch_size'][1]]
+            #         query = torch.cat((encoder_feature[:batch_size,:,:],encoder_feature[2*batch_size:3*batch_size,:,:]),0).view(2*batch_size, -1)
+            #         positive_key = torch.cat((encoder_feature[batch_size:2*batch_size,:,:],encoder_feature[3*batch_size:,:,:]),0).view(2*batch_size_[0],batch_size_[1], -1)
+            #         negative_keys = []
+            #         for i in range(2*batch_size_[0]):
+            #             if i < 8:
+            #                 index_neg = torch.logical_and(torch.arange(positive_key.size(0))!=i, torch.arange(positive_key.size(0))!=i+batch_size_[0])
+            #             else:
+            #                 index_neg = torch.logical_and(torch.arange(positive_key.size(0))!=i, torch.arange(positive_key.size(0))!=i-batch_size_[0])
+            #             negative_keys.append(positive_key[index_neg])
+            #         positive_key = positive_key.view(2*batch_size,-1)
+            #         negative_keys = torch.stack(negative_keys, dim=0)  # 8,7,16,4096
+            #         set_trace()
+            #         negative_keys = negative_keys.permute(0,2,1,3).contiguous().view(2*batch_size_[0],2*(batch_size_[0]-1)*batch_size_[1],-1)  # 8,7*16,4096
+            #         negative_keys = negative_keys.unsqueeze(2).repeat(1,batch_size_[1],1,1)
+            #         negative_keys = negative_keys.view(batch_size, (batch_size_[0]-1)*batch_size_[1], -1)
+            #         infonce_loss_git = self.infonce_loss_git(query, positive_key, negative_keys)
+            #         loss += infonce_loss_git.mean() * self.config['infonce_git_weight']* (0.9 + 0.1 * np.sin((self.config['restore_iter'] / self.config['total_iter'])*np.pi*0.5))
+            #         self.infonce_git_loss_metric[0].append(infonce_loss_git.mean().data.cpu().numpy())
             if self.config['infonce_git_weight'] > 0:
                 batch_size = self.config['batch_size'][0] * self.config['batch_size'][1]
                 batch_size_ = [self.config['batch_size'][0], self.config['batch_size'][1]]
-                query = encoder_feature[:batch_size,:,:].view(batch_size, -1)
-                positive_key = encoder_feature[batch_size:,:,:].view(batch_size_[0],batch_size_[1], -1)
+
+                feature_ori = encoder_feature[:batch_size*2]
+                feature_mo = encoder_feature[batch_size*2:]
+
+                query = feature_ori[:batch_size,:,:].view(batch_size, -1)
+                positive_key = feature_ori[batch_size:,:,:].view(batch_size_[0],batch_size_[1], -1)
                 negative_keys = []
                 for i in range(batch_size_[0]):
                     negative_keys.append(positive_key[torch.arange(positive_key.size(0))!=i])
@@ -221,9 +250,24 @@ class ModelMo:
                 negative_keys = negative_keys.permute(0,2,1,3).contiguous().view(batch_size_[0],(batch_size_[0]-1)*batch_size_[1],-1)  # 8,7*16,4096
                 negative_keys = negative_keys.unsqueeze(2).repeat(1,batch_size_[1],1,1)
                 negative_keys = negative_keys.view(batch_size, (batch_size_[0]-1)*batch_size_[1], -1)
-                infonce_loss_git = self.infonce_loss_git(query, positive_key, negative_keys)
-                loss += infonce_loss_git.mean() * self.config['infonce_git_weight']
-                self.infonce_git_loss_metric[0].append(infonce_loss_git.mean().data.cpu().numpy())
+                infonce_loss_git_ori = self.infonce_loss_git(query, positive_key, negative_keys)
+                loss += infonce_loss_git_ori.mean() * self.config['infonce_git_weight']* (0.9 + 0.1 * np.sin((self.config['restore_iter'] / self.config['total_iter'])*np.pi*0.5))
+
+
+                query = feature_mo[:batch_size,:,:].view(batch_size, -1)
+                positive_key = feature_mo[batch_size:,:,:].view(batch_size_[0],batch_size_[1], -1)
+                negative_keys = []
+                for i in range(batch_size_[0]):
+                    negative_keys.append(positive_key[torch.arange(positive_key.size(0))!=i])
+                positive_key = positive_key.view(batch_size,-1)
+                negative_keys = torch.stack(negative_keys, dim=0)  # 8,7,16,4096
+                negative_keys = negative_keys.permute(0,2,1,3).contiguous().view(batch_size_[0],(batch_size_[0]-1)*batch_size_[1],-1)  # 8,7*16,4096
+                negative_keys = negative_keys.unsqueeze(2).repeat(1,batch_size_[1],1,1)
+                negative_keys = negative_keys.view(batch_size, (batch_size_[0]-1)*batch_size_[1], -1)
+                infonce_loss_git_mo = self.infonce_loss_git(query, positive_key, negative_keys)
+                loss += infonce_loss_git_mo.mean() * self.config['infonce_git_weight']* (0.9 + 0.1 * np.sin((self.config['restore_iter'] / self.config['total_iter'])*np.pi*0.5))
+
+                self.infonce_git_loss_metric[0].append((infonce_loss_git_ori+infonce_loss_git_mo).data.cpu().numpy())
             self.total_loss_metric.append(loss.data.cpu().numpy())
 
             if loss > 1e-9:
