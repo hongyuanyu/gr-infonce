@@ -40,7 +40,7 @@ def initialization(config):
     print("Initialzing...")
     os.environ["CUDA_VISIBLE_DEVICES"] = config["gpu"]
     if config['model_mix']:
-        config['pid_num'] = 73+43
+        #config['pid_num'] = 73+43
         train_source_all, _ = initialize_data(config)
         config['train_source_all'] = train_source_all
 
@@ -58,7 +58,7 @@ def initialization(config):
                 
         model = initialize_model(config)
     else:
-        config['pid_num'] = 73+43
+        #config['pid_num'] = 73+43
         train_source, test_source = initialize_data(config)
         config['train_source'] = train_source
         config['test_source'] = test_source

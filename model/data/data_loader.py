@@ -34,18 +34,28 @@ def load_data(config):
                 for _view in sorted(list(os.listdir(type_path))):
                     view_path = osp.join(type_path, _view)
                     if check_frames:
-                        pkl_name = '{}.pkl'.format(os.path.basename(view_path))
+                        if dataset == 'oumvlp':
+                            pkl_name = 'seqs.pkl'
+                        else:
+                            pkl_name = '{}.pkl'.format(os.path.basename(view_path))
                         all_imgs = pickle.load(open(osp.join(view_path, pkl_name), 'rb'))
+                        all_imgs = np.array(all_imgs)
+                        
                         if all_imgs.shape[0] < 15:
                             continue
                     seq_dir_list.append(view_path)
                     seq_id_list.append(prefix+_id)
                     seq_type_list.append(_type)
                     seq_id_clean_list.append(prefix+_id[:3])
+
                     #############################################################
                     if check_resolution:
-                        pkl_name = '{}.pkl'.format(os.path.basename(view_path))
+                        if dataset == 'oumvlp':
+                            pkl_name = 'seqs.pkl'
+                        else:
+                            pkl_name = '{}.pkl'.format(os.path.basename(view_path))
                         all_imgs = pickle.load(open(osp.join(view_path, pkl_name), 'rb'))
+                        all_imgs = np.array(all_imgs)
                         assert(all_imgs.shape[1]==resolution)
                         assert(all_imgs.shape[2]==resolution or all_imgs.shape[2]==(resolution-2*cut_padding))
                         check_resolution = False
@@ -73,7 +83,6 @@ def load_data(config):
             pid_list = [pid_list[0:pid_num], pid_list[pid_num:]]
         os.makedirs('partition', exist_ok=True)
         np.save(pid_fname, pid_list)
-
     pid_list = np.load(pid_fname, allow_pickle=True)
     train_id_list = pid_list[0]
     test_id_list = pid_list[1]
@@ -102,7 +111,7 @@ def load_data(config):
         if l not in train_index_info.keys():
             train_index_info[l] = []
         train_index_info[l].append(i)
-    train_source = DataSet(train_seq_dir_list, train_seq_id_list, train_seq_id_clean_list, train_seq_type_list, train_index_info, resolution, cut_padding)
+    train_source = DataSet(dataset, train_seq_dir_list, train_seq_id_list, train_seq_id_clean_list, train_seq_type_list, train_index_info, resolution, cut_padding)
 
     # test source
     test_seq_dir_list = [seq_dir_list[i] for i, l in enumerate(seq_id_list) if l.split('_')[0] in test_id_list]
@@ -114,7 +123,7 @@ def load_data(config):
         if l not in test_index_info.keys():
             test_index_info[l] = []
         test_index_info[l].append(i)
-    test_source = DataSet(test_seq_dir_list, test_seq_id_list, test_seq_id_list, test_seq_type_list, test_index_info, resolution, cut_padding)
+    test_source = DataSet(dataset, test_seq_dir_list, test_seq_id_list, test_seq_id_list, test_seq_type_list, test_index_info, resolution, cut_padding)
 
     print('train label set={}, total={}'.format(sorted(list(set(train_seq_id_list))), len(list(set(train_seq_id_list)))))
     print('test label set={}, total={}'.format(sorted(list(set(test_seq_id_list))), len(list(set(test_seq_id_list)))))   

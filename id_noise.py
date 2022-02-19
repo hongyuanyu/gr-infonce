@@ -8,7 +8,7 @@ import numpy as np
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--pid_num', default=44, type=int, help='split for noise')
+parser.add_argument('--pid_num', default=90, type=int, help='split for noise')
 args = parser.parse_args()
 pid_num = args.pid_num
 
@@ -18,8 +18,8 @@ if src_size == 128:
     src_dir = './silhouettes_cut128_pkl'
     des_dir = './silhouettes_cut128_pkl_idnoise{}'.format(args.pid_num)
 elif src_size == 64:
-    src_dir = '/home2/ywc/workspace/output_pkl_64'
-    des_dir = '/home2/ywc/workspace/noisy_output_pkl_64{}'.format(args.pid_num)
+    src_dir = '/data_2/yuweichen/casia-c/CASIA_C_ncut_64_pkl'
+    des_dir = '/data_2/yuweichen/casia-c/CASIA_C_ncut_64_pkl_noise{}'.format(args.pid_num)
 
 def process_id(id0):
     id_path = os.path.join(src_dir, id0)
