@@ -21,7 +21,7 @@ class TripletLoss(nn.Module):
         self.label_clean_stat = list()
         self.iteration = 0
 
-    def forward(self, feature, label, label_clean, seq_type, loss_statistic):
+    def forward(self, feature, label, label_clean, seq_type, loss_statistic,is_mean=False):
         # feature: [n, m, d], label: [n, m]      16*128*128  16*128
         n, m, d = feature.size()
         hp_mask = (label.unsqueeze(1) == label.unsqueeze(2))
@@ -91,7 +91,7 @@ class TripletLoss(nn.Module):
                 hard_loss_metric_mean[nonzero_num == 0] = 0
             else:
                 hard_loss_metric_mean = torch.mean(hard_loss_metric, 1)
-
+            
             return hard_loss_metric_mean.mean(), nonzero_num.mean()
         elif self.triplet_type == 'full':
             # full
@@ -99,14 +99,16 @@ class TripletLoss(nn.Module):
             full_hp_dist = torch.masked_select(dist, hp_mask).view(n, m, -1, 1)
             full_hn_dist = torch.masked_select(dist, hn_mask).view(n, m, 1, -1)
             if self.margin > 0:
-                full_loss_metric = F.relu(self.margin + full_hp_dist - full_hn_dist).view(n, -1)  #16*128*16*128
+                full_loss_metric = F.relu(self.margin + full_hp_dist - full_hn_dist).view(n,m, -1)  #16*128*16*128
             else:
-                full_loss_metric = F.softplus(full_hp_dist - full_hn_dist).view(n, -1)  
+                full_loss_metric = F.softplus(full_hp_dist - full_hn_dist).view(n,m, -1)  
 
-            nonzero_num = (full_loss_metric != 0).sum(1).float()
-            
+            #nonzero_num = (full_loss_metric != 0).sum(1).float()
+            nonzero_num = (full_loss_metric != 0).sum(2).float() #16*128
+            set_trace()
             if self.nonzero:
-                full_loss_metric_mean = full_loss_metric.sum(1) / nonzero_num
+                #full_loss_metric_mean = full_loss_metric.sum(1) / nonzero_num
+                full_loss_metric_mean = full_loss_metric.sum(2) / nonzero_num
                 full_loss_metric_mean[nonzero_num == 0] = 0
             else:
                 full_loss_metric_mean = full_loss_metric.mean(1)
@@ -134,8 +136,10 @@ class TripletLoss(nn.Module):
                         self.loss_nonzero = list()
                         self.label_stat = list()
                         self.label_clean_stat = list()
-
-            return full_loss_metric_mean.mean(), nonzero_num.mean()
+            if is_mean:
+                return
+            else:
+                return full_loss_metric_mean.mean(), nonzero_num.mean()
 
         elif self.triplet_type == 'full_cloth':
             # full

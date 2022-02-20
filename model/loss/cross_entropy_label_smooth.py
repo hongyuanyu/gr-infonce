@@ -31,7 +31,7 @@ class CrossEntropyLabelSmooth(nn.Module):
         self.label_clean_stat = list()
         self.index_bigloss = list()
 
-    def forward(self, inputs, label, label_clean, l, loss_statistic):
+    def forward(self, inputs, label, label_clean, l, loss_statistic, is_mean=False):
         """
         Args:
             inputs: prediction matrix (before softmax) with shape (batch_size, num_classes)
@@ -45,39 +45,41 @@ class CrossEntropyLabelSmooth(nn.Module):
         if self.use_gpu: targets = targets.cuda()
         targets = (1 - self.epsilon) * targets + self.epsilon / self.num_classes
         loss = (- targets * log_probs).sum(1)
-
-        loss_mean = loss.mean(0)
+        if is_mean == True:
+            return loss
+        else:
+            loss_mean = loss.mean(0)
         
-        if loss_statistic == True :
+            if loss_statistic == True :
             #index_bigloss = index[loss>4.8]
 
-            with torch.no_grad():
+                with torch.no_grad():
                 
-                n = loss.shape  #128
-                self.loss.append(loss)  #128*16*~
-                self.index_bigloss.append(index_bigloss)  #128*16*~
-                self.label_stat.append(label)
-                self.label_clean_stat.append(label_clean)
-                self.iteration += 1
-                if self.iteration == 10:
-                    set_trace()
-                    self.index_bigloss = torch.cat(self.index_bigloss, dim=0)
-                    save_path = '/home/yuweichen/workspace/noisy_gait/visualize_feature'
-                    file_name = os.path.join(save_path, 'bigCEloss.pkl')
-                    with open(file_name, 'wb') as f:
-                        pickle.dump(self.index_bigloss, f)
-                    self.loss = torch.cat(self.loss, dim=0)
-                    self.label_stat = torch.cat(self.label_stat, dim=0)
-                    self.label_clean_stat = torch.cat(self.label_clean_stat, dim=0)
-                    self.loss_statistic(self.loss, self.label_stat, self.label_clean_stat)
+                    n = loss.shape  #128
+                    self.loss.append(loss)  #128*16*~
+                    self.index_bigloss.append(index_bigloss)  #128*16*~
+                    self.label_stat.append(label)
+                    self.label_clean_stat.append(label_clean)
+                    self.iteration += 1
+                    if self.iteration == 10:
+                        set_trace()
+                        self.index_bigloss = torch.cat(self.index_bigloss, dim=0)
+                        save_path = '/home/yuweichen/workspace/noisy_gait/visualize_feature'
+                        file_name = os.path.join(save_path, 'bigCEloss.pkl')
+                        with open(file_name, 'wb') as f:
+                            pickle.dump(self.index_bigloss, f)
+                        self.loss = torch.cat(self.loss, dim=0)
+                        self.label_stat = torch.cat(self.label_stat, dim=0)
+                        self.label_clean_stat = torch.cat(self.label_clean_stat, dim=0)
+                        self.loss_statistic(self.loss, self.label_stat, self.label_clean_stat)
 
-                    self.loss = list()
-                    self.loss_nonzero = list()
-                    self.label_stat = list()
-                    self.label_clean_stat = list()
-                    self.index_bigloss = list()
+                        self.loss = list()
+                        self.loss_nonzero = list()
+                        self.label_stat = list()
+                        self.label_clean_stat = list()
+                        self.index_bigloss = list()
 
-        return loss_mean
+            return loss_mean
 
     def loss_statistic(self, loss, label_noisy, label_clean):
         batch_size = loss.shape  #128
