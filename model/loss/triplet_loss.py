@@ -105,7 +105,7 @@ class TripletLoss(nn.Module):
 
             #nonzero_num = (full_loss_metric != 0).sum(1).float()
             nonzero_num = (full_loss_metric != 0).sum(2).float() #16*128
-            set_trace()
+
             if self.nonzero:
                 #full_loss_metric_mean = full_loss_metric.sum(1) / nonzero_num
                 full_loss_metric_mean = full_loss_metric.sum(2) / nonzero_num
@@ -137,7 +137,7 @@ class TripletLoss(nn.Module):
                         self.label_stat = list()
                         self.label_clean_stat = list()
             if is_mean:
-                return
+                return full_loss_metric_mean.mean(0),nonzero_num.mean()
             else:
                 return full_loss_metric_mean.mean(), nonzero_num.mean()
 
