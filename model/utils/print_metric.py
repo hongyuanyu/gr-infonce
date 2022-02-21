@@ -9,6 +9,7 @@ def de_diag(acc, each_angle=False):
     return result
 
 def print_CMC(CMC, config):
+    import pdb;pdb.set_trace()
     rank_list = np.asarray(config['rank']) - 1
     for i in rank_list:
         print('===Rank-%d (Include identical-view cases)===' % (i + 1))

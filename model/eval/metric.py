@@ -5,7 +5,6 @@ def compute_CMC_mAP(distmat, q_pids, g_pids, max_rank):
     num_q, num_g = distmat.shape
     indices = np.argsort(distmat, axis=1)
     matches = (g_pids[indices] == q_pids[:, np.newaxis]).astype(np.int32)
-
     # compute cmc curve for each query
     all_cmc = []
     all_AP = []

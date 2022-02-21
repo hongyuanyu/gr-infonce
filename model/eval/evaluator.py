@@ -35,13 +35,17 @@ def evaluation(data, config):
     dataset = config['dataset']
     probe_seq_dict = {'CASIA-B': [['nm-05', 'nm-06'], ['bg-01', 'bg-02'], ['cl-01', 'cl-02']],
                       'OUMVLP': [['00']],
-                      'CASIA_EN': [['H_scene1_nm_1', 'H_scene1_nm_2', 'H_scene2_nm_1', 'H_scene2_nm_2', 'L_scene1_nm_1', 'L_scene1_nm_2', 'L_scene2_nm_1', 'L_scene2_nm_2'], 
+                      'CASIA-EN': [['H_scene1_nm_1', 'H_scene1_nm_2', 'H_scene2_nm_1', 'H_scene2_nm_2', 'L_scene1_nm_1', 'L_scene1_nm_2', 'L_scene2_nm_1', 'L_scene2_nm_2'], 
                                   ['H_scene1_bg_1', 'H_scene1_bg_2', 'H_scene2_bg_1', 'H_scene2_bg_2', 'L_scene1_bg_1', 'L_scene1_bg_2', 'L_scene2_bg_1', 'L_scene2_bg_2'],
-                                  ['H_scene1_cl_1', 'H_scene1_cl_2', 'H_scene2_cl_1', 'H_scene2_cl_2', 'L_scene1_cl_1', 'L_scene1_cl_2', 'L_scene2_cl_1', 'L_scene2_cl_2']]
+                                  ['H_scene1_cl_1', 'H_scene1_cl_2', 'H_scene2_cl_1', 'H_scene2_cl_2', 'L_scene1_cl_1', 'L_scene1_cl_2', 'L_scene2_cl_1', 'L_scene2_cl_2']],
+                    'CASIAC': [['H_scene1_nm_1', 'H_scene1_nm_2', 'H_scene2_nm_1', 'H_scene2_nm_2', 'L_scene1_nm_1', 'L_scene1_nm_2', 'L_scene2_nm_1', 'L_scene2_nm_2'], 
+                                  ['H_scene1_bg_1', 'H_scene1_bg_2', 'H_scene2_bg_1', 'H_scene2_bg_2', 'L_scene1_bg_1', 'L_scene1_bg_2', 'L_scene2_bg_1', 'L_scene2_bg_2'],
+                                  ['H_scene1_cl_1', 'H_scene1_cl_2', 'H_scene2_cl_1', 'H_scene2_cl_2', 'L_scene1_cl_1', 'L_scene1_cl_2', 'L_scene2_cl_1', 'L_scene2_cl_2']],
                       }
     gallery_seq_dict = {'CASIA-B': [['nm-01', 'nm-02', 'nm-03', 'nm-04']],
                         'OUMVLP': [['01']],
-                        'CASIA_EN': [['H_scene3_nm_1', 'H_scene3_nm_2', 'L_scene3_nm_1', 'L_scene3_nm_2']]
+                        'CASIA-EN': [['H_scene3_nm_1', 'H_scene3_nm_2', 'L_scene3_nm_1', 'L_scene3_nm_2']],
+                        'CASIAC': [['H_scene3_nm_1', 'H_scene3_nm_2', 'H_scene3_nm_3', 'H_scene3_nm_4', 'L_scene3_nm_1', 'L_scene3_nm_2','L_scene3_nm_2', 'L_scene3_nm_4']]
                         }
     if dataset not in probe_seq_dict.keys():
         evaluation_real(data, config)
@@ -68,7 +72,7 @@ def evaluation(data, config):
                     gseq_mask = np.isin(seq_type, gallery_seq) & np.isin(view, [gallery_view])
                     gallery_y = label[gseq_mask]
                     gseq_mask = torch.from_numpy(np.asarray(gseq_mask, dtype=np.uint8))
-                    gallery_x = feature[gseq_mask, :, :]
+                    gallery_x = feature[gseq_mask, :, :]  #取出特定type和view的gallary的x和y
 
                     if config['remove_no_gallery']:
                         pseq_mask = np.isin(seq_type, probe_seq) & np.isin(view, [probe_view]) & np.isin(label, gallery_y)
@@ -76,7 +80,7 @@ def evaluation(data, config):
                         pseq_mask = np.isin(seq_type, probe_seq) & np.isin(view, [probe_view])
                     probe_y = label[pseq_mask]
                     pseq_mask = torch.from_numpy(np.asarray(pseq_mask, dtype=np.uint8))
-                    probe_x = feature[pseq_mask, :, :]
+                    probe_x = feature[pseq_mask, :, :]  #取出特定type和view的probe的x和y
 
                     if config['reranking']:
                         #assert(config['euc_or_cos_dist'] == 'cos')
