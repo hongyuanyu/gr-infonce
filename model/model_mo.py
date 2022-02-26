@@ -27,6 +27,16 @@ import torch.nn.functional as F
 import pickle 
 from info_nce import InfoNCE
 
+class SoftLoss(nn.Module):
+
+    def __init__(self):
+        super(SoftLoss, self).__init__()
+
+    def forward(self, x, target, mask, temperature):
+        target = F.softmax(target/temperature, dim=-1)
+        loss = torch.sum(-target * F.log_softmax(x, dim=-1), dim=-1) * mask
+        return loss.mean()
+
 class ModelMo:
     def __init__(self, config):
         self.config = deepcopy(config)
@@ -70,11 +80,11 @@ class ModelMo:
     def build_data(self):
         # data augment
         if self.config['dataset_augment']:
-            self.data_transforms = build_data_transforms(random_erasing=False, random_rotate=False, \
+            self.data_transforms = build_data_transforms(random_erasing=True, random_rotate=False, \
                                         random_horizontal_flip=False, random_pad_crop=False, cloth_dilate=False, cloth_erode=False,\
                                         resolution=self.config['resolution'], random_seed=self.random_seed) 
-            self.data_transforms_new = build_data_transforms(random_erasing=True, random_rotate=True,\
-                                        random_horizontal_flip=True, random_pad_crop=True, cloth_dilate=False, cloth_erode=False, \
+            self.data_transforms_new = build_data_transforms(random_erasing=True, random_rotate=False,\
+                                        random_horizontal_flip=False, random_pad_crop=False, cloth_dilate=False, cloth_erode=False, \
                                         resolution=self.config['resolution'], random_seed=self.random_seed+1) 
         
         #triplet sampler
@@ -89,8 +99,10 @@ class ModelMo:
                 self.encoder_entropy_loss = CrossEntropyLabelSmooth(self.config['num_id']).float().cuda()
             else:
                 self.encoder_entropy_loss = nn.CrossEntropyLoss().float().cuda()
+            self.softlabel_loss = SoftLoss()
             if self.config['DDP']:
                 self.encoder_entropy_loss = DistributedLossWrapper(self.encoder_entropy_loss, dim=0)
+                self.softlabel_loss = DistributedLossWrapper(self.softlabel_loss, dim=0)
 
         if self.config['encoder_triplet_weight'] > 0:
             self.encoder_triplet_loss = TripletLoss(self.config['encoder_triplet_margin'], self.config['triplet_type']).float().cuda()
@@ -103,13 +115,17 @@ class ModelMo:
             self.infonce_loss = InfonceLoss(temperature, self.config['batch_size'], self.ap_mode, self.an_mode).float().cuda()
         if self.config['infonce_git_weight'] > 0:
             self.infonce_loss_git = InfoNCE(negative_mode='paired')
-
+        if self.config['class_level_infonce_git_weight'] > 0:
+            self.class_level_infonce_loss_git = InfoNCE(negative_mode='unpaired')
+        if self.config['new_infonce_git_weight'] > 0:
+            self.new_infonce_loss_git = InfoNCE(negative_mode='unpaired')
             if self.config['DDP']:
                 self.encoder_triplet_loss = DistributedLossWrapper(self.infonce_loss, dim=1)
 
     def build_loss_metric(self):
         if self.config['encoder_entropy_weight'] > 0:
             self.encoder_entropy_loss_metric = [[]]
+            self.soft_loss_metric = [[]]
 
         if self.config['encoder_triplet_weight'] > 0:
             self.encoder_triplet_loss_metric = [[], []]
@@ -118,7 +134,10 @@ class ModelMo:
             self.infonce_loss_metric = [[]]
         if self.config['infonce_git_weight'] > 0:
             self.infonce_git_loss_metric = [[]]
-            
+        if self.config['class_level_infonce_git_weight'] > 0:
+            self.class_level_infonce_git_loss_metric = [[]]
+        if self.config['new_infonce_git_weight'] > 0:
+            self.new_infonce_git_loss_metric = [[]]
         self.total_loss_metric = []
     
     def build_optimizer(self):
@@ -179,10 +198,22 @@ class ModelMo:
                 encoder_feature_mo, encoder_bn_feature_mo, encoder_cls_score_mo \
                     = self.encoder_mo(seq, self.config['restore_iter'], batch_frame, target_label)
 
-            encoder_feature = torch.cat((encoder_feature, encoder_feature_mo),0)
-            encoder_cls_score = torch.cat((encoder_cls_score, encoder_cls_score_mo),0)
-            target_label = torch.cat((target_label,target_label),0)
             loss = torch.zeros(1).to(encoder_feature.device)
+            if self.config['restore_iter'] > 2000:
+                # import pdb; pdb.set_trace()
+                soft_loss = 0
+                label_margin = 4.0
+                temperature = 0.1
+                for i in range(encoder_cls_score.size(1)):
+                    soft_target = encoder_cls_score_mo[:, i, :].detach()
+                    top2 = torch.topk(soft_target, 2)
+                    # mask = ((top2[0][:, 0] - top2[0][:, 1])>label_margin) + 0.1
+                    mask = ((top2[0][:, 0] - top2[0][:, 1])>label_margin) * 0.5 + 0.5
+                    soft_loss += self.softlabel_loss(encoder_cls_score[:, i, :].float(), soft_target, mask, temperature)
+                soft_loss_metric = soft_loss / encoder_cls_score.size(1)
+                loss += soft_loss_metric * self.config['encoder_entropy_weight']* (1 + 9 * np.sin((self.config['restore_iter'] / self.config['total_iter'])*np.pi*0.5))
+                self.soft_loss_metric[0].append(soft_loss_metric.mean().data.cpu().numpy())
+
 
             if self.config['encoder_entropy_weight'] > 0:
                 entropy_loss_metric = 0
@@ -191,6 +222,10 @@ class ModelMo:
                 entropy_loss_metric = entropy_loss_metric / encoder_cls_score.size(1)
                 loss += entropy_loss_metric * self.config['encoder_entropy_weight']* (3 - 2 * np.sin((self.config['restore_iter'] / self.config['total_iter'])*np.pi*0.5))
                 self.encoder_entropy_loss_metric[0].append(entropy_loss_metric.mean().data.cpu().numpy())
+
+            #encoder_feature = torch.cat((encoder_feature, encoder_feature_mo),0)
+            #encoder_cls_score = torch.cat((encoder_cls_score, encoder_cls_score_mo),0)
+            #target_label = torch.cat((target_label,target_label),0)
 
             if self.config['encoder_triplet_weight'] > 0:
                 encoder_triplet_feature = encoder_feature.float().permute(1, 0, 2).contiguous()
@@ -238,7 +273,8 @@ class ModelMo:
                 batch_size_ = [self.config['batch_size'][0], self.config['batch_size'][1]]
 
                 feature_ori = encoder_feature[:batch_size*2]
-                feature_mo = encoder_feature[batch_size*2:]
+                # feature_mo = encoder_feature[batch_size*2:]
+                feature_mo = encoder_feature_mo
 
                 query = feature_ori[:batch_size,:,:].view(batch_size, -1)
                 positive_key = feature_ori[batch_size:,:,:].view(batch_size_[0],batch_size_[1], -1)
@@ -268,6 +304,87 @@ class ModelMo:
                 loss += infonce_loss_git_mo.mean() * self.config['infonce_git_weight']* (0.9 + 0.1 * np.sin((self.config['restore_iter'] / self.config['total_iter'])*np.pi*0.5))
 
                 self.infonce_git_loss_metric[0].append((infonce_loss_git_ori+infonce_loss_git_mo).data.cpu().numpy())
+                # self.infonce_git_loss_metric[0].append((infonce_loss_git_ori).data.cpu().numpy())
+
+            if self.config['class_level_infonce_git_weight'] > 0:   ########相当于有标签
+                batch_size = self.config['batch_size'][0] * self.config['batch_size'][1]
+                batch_size_ = [self.config['batch_size'][0], self.config['batch_size'][1]]
+                feature_ori = encoder_feature[:batch_size*2]
+                # feature_mo = encoder_feature[batch_size*2:]
+                feature_mo = encoder_feature_mo
+
+                query = feature_ori[:batch_size,:,:].view(batch_size, -1)
+                positive_key = feature_ori[batch_size:,:,:].view(batch_size_[0],batch_size_[1], -1)
+                negative_keys = []
+
+                for i in range(batch_size_[0]):
+                    label_ = label.reshape(2,batch_size_[0],batch_size_[1])[0,:,0]
+                    mask =  ~(label_ == label[batch_size_[1]*i])
+                    negative_keys = positive_key[mask]
+
+                    #negative_keys = torch.stack(negative_keys, dim=0)  # 1,7,16,4096
+                    dim = query.shape[-1]
+                    class_level_infonce_loss_git_ori = self.class_level_infonce_loss_git(query.reshape(batch_size_[0],batch_size_[1],-1)[i], positive_key[i], negative_keys.view(-1,dim))
+                    loss += class_level_infonce_loss_git_ori.mean() * self.config['class_level_infonce_git_weight']* (0.9 + 0.1 * np.sin((self.config['restore_iter'] / self.config['total_iter'])*np.pi*0.5))
+
+                query = feature_mo[:batch_size,:,:].view(batch_size, -1)
+                positive_key = feature_mo[batch_size:,:,:].view(batch_size_[0],batch_size_[1], -1)
+                negative_keys = []
+                for i in range(batch_size_[0]):
+                    label_ = label.reshape(2,batch_size_[0],batch_size_[1])[0,:,0]
+                    mask =  ~(label_ == label[batch_size_[1]*i])
+                    negative_keys = positive_key[mask]
+                    #negative_keys = torch.stack(negative_keys, dim=0)  # 1,7,16,4096
+                    dim = query.shape[-1]
+                    class_level_infonce_loss_git_mo = self.class_level_infonce_loss_git(query.reshape(batch_size_[0],batch_size_[1],-1)[i], positive_key[i], negative_keys.view(-1,dim))
+                    loss += class_level_infonce_loss_git_mo.mean() * self.config['class_level_infonce_git_weight']* (0.9 + 0.1 * np.sin((self.config['restore_iter'] / self.config['total_iter'])*np.pi*0.5))
+               
+                self.class_level_infonce_git_loss_metric[0].append((class_level_infonce_loss_git_ori + class_level_infonce_loss_git_mo).data.cpu().numpy())
+
+            if self.config['new_infonce_git_weight'] > 0:  #########
+                batch_size = self.config['batch_size'][0] * self.config['batch_size'][1]
+                batch_size_ = [self.config['batch_size'][0], self.config['batch_size'][1]]
+                feature_ori = encoder_feature[:batch_size*2]
+                # feature_mo = encoder_feature[batch_size*2:]
+                feature_mo = encoder_feature_mo
+
+                query = feature_ori[:batch_size,:,:].view(batch_size, -1)
+                positive_da = feature_ori[batch_size:,:,:].view(batch_size, -1)  #1 to 1  128*
+                mask = label[:batch_size,np.newaxis] == label[np.newaxis,:batch_size]
+                _ = np.repeat(range(batch_size_[0]),batch_size_[1])
+                unlabel_mask = _[:,np.newaxis] ==  _[np.newaxis,:]
+                positive_label_keys = []
+                negative_label_keys = []
+                negative_unlabel_keys = []
+                new_infonce_loss_git_ori = 0
+                for i in range(batch_size):
+                    positive_label_keys = query[mask[i]]  #包括了q自己， 16n*dim
+                    negative_label_keys = query[~mask[i]] #                       (128-16n)*dim
+                    negative_unlabel_keys = positive_da[~unlabel_mask[i]] #112*dim
+                    for num_pl in range(positive_label_keys.shape[0]):
+                        new_infonce_loss_git_ori += self.new_infonce_loss_git(query[i].unsqueeze(0), positive_label_keys[num_pl].unsqueeze(0), negative_label_keys)
+                    new_infonce_loss_git_ori += self.new_infonce_loss_git(query[i].unsqueeze(0), positive_da[i].unsqueeze(0), negative_label_keys)
+                    loss += new_infonce_loss_git_ori.mean() * self.config['new_infonce_git_weight']* (0.9 + 0.1 * np.sin((self.config['restore_iter'] / self.config['total_iter'])*np.pi*0.5))
+                new_infonce_loss_git_ori += self.new_infonce_loss_git(query, positive_da, negative_label_keys)
+                
+                loss += new_infonce_loss_git_ori.mean() * self.config['new_infonce_git_weight']* (0.9 + 0.1 * np.sin((self.config['restore_iter'] / self.config['total_iter'])*np.pi*0.5))
+
+                query = feature_mo[:batch_size,:,:].view(batch_size, -1)
+                positive_da = feature_mo[batch_size:,:,:].view(batch_size, -1)
+                positive_label_keys = []
+                negative_label_keys = []
+                negative_unlabel_keys = []
+                new_infonce_loss_git_mo = 0
+                for i in range(batch_size):
+                    positive_label_keys = query[mask[i]]  #包括了q自己， 16n*dim
+                    negative_label_keys = query[~mask[i]] #                       (128-16n)*dim
+                    negative_unlabel_keys = positive_da[~unlabel_mask[i]] #112*dim
+                    for num_pl in range(positive_label_keys.shape[0]):
+                        new_infonce_loss_git_mo += self.new_infonce_loss_git(query[i].unsqueeze(0), positive_label_keys[num_pl].unsqueeze(0), negative_label_keys)
+                    new_infonce_loss_git_mo += self.new_infonce_loss_git(query[i].unsqueeze(0), positive_da[i].unsqueeze(0), negative_label_keys)
+                    loss += new_infonce_loss_git_mo.mean() * self.config['new_infonce_git_weight']* (0.9 + 0.1 * np.sin((self.config['restore_iter'] / self.config['total_iter'])*np.pi*0.5))
+
+                self.new_infonce_git_loss_metric[0].append((new_infonce_loss_git_ori + new_infonce_loss_git_mo).data.cpu().numpy())
             self.total_loss_metric.append(loss.data.cpu().numpy())
 
             if loss > 1e-9:
@@ -297,6 +414,8 @@ class ModelMo:
                     print(datetime.now() - _time1)
                     _time1 = datetime.now()
                     self.print_info()
+                    if self.config['restore_iter'] > 2000:
+                        print("mask sum: {}".format(mask.sum()))
                 self.build_loss_metric()
             if self.config['restore_iter'] % 100 == 0 or self.config['restore_iter'] == self.config['total_iter']:
                 if (not self.config['DDP']) or (self.config['DDP'] and dist.get_rank() == 0):
@@ -381,29 +500,41 @@ class ModelMo:
         if self.config['encoder_entropy_weight'] > 0:
             loss_name = 'Encoder Entropy'
             loss_metric = self.encoder_entropy_loss_metric[0]
-            loss_weight = self.config['encoder_entropy_weight']
+            loss_weight = self.config['encoder_entropy_weight'] * (3 - 2 * np.sin((self.config['restore_iter'] / self.config['total_iter'])*np.pi*0.5))
+            loss_info = 'label_smooth={}'.format(self.config['label_smooth'])
+            print_loss_info(loss_name, loss_metric, loss_weight, loss_info)
+            
+            loss_name = 'Soft Loss'
+            loss_metric = self.soft_loss_metric[0]
+            loss_weight = self.config['encoder_entropy_weight'] * (1 + 9 * np.sin((self.config['restore_iter'] / self.config['total_iter'])*np.pi*0.5)) * 2
             loss_info = 'label_smooth={}'.format(self.config['label_smooth'])
             print_loss_info(loss_name, loss_metric, loss_weight, loss_info)
 
         if self.config['encoder_triplet_weight'] > 0:
             loss_name = 'Encoder Triplet'
             loss_metric = self.encoder_triplet_loss_metric[0]
-            loss_weight = self.config['encoder_triplet_weight']
+            loss_weight = self.config['encoder_triplet_weight'] * (0.9 + 0.1 * np.sin((self.config['restore_iter'] / self.config['total_iter'])*np.pi*0.5)) 
             loss_info = 'nonzero_num={:.6f}, margin={}'.format(np.mean(self.encoder_triplet_loss_metric[1]), self.config['encoder_triplet_margin'])
             print_loss_info(loss_name, loss_metric, loss_weight, loss_info)
 
         if self.config['self_supervised_weight'] > 0:
             loss_name = 'InfoNCE'
             loss_metric = self.infonce_loss_metric[0]
-            loss_weight = self.config['self_supervised_weight']
+            loss_weight = self.config['self_supervised_weight'] * (0.1 + 0.9 * np.sin((self.config['restore_iter'] / self.config['total_iter'])*np.pi*0.5))
             loss_info = 'ap_mode={},an_mode={}'.format(self.ap_mode, self.an_mode)
             print_loss_info(loss_name, loss_metric, loss_weight, loss_info)
 
         if self.config['infonce_git_weight'] > 0:
             loss_name = 'InfoNCE_git'
             loss_metric = self.infonce_git_loss_metric[0]
-            loss_weight = self.config['infonce_git_weight']
+            loss_weight = self.config['infonce_git_weight'] * (0.1 + 0.9 * np.sin((self.config['restore_iter'] / self.config['total_iter'])*np.pi*0.5))
             loss_info = 'paired'
+            print_loss_info(loss_name, loss_metric, loss_weight, loss_info)
+        if self.config['new_infonce_git_weight'] > 0:
+            loss_name = 'new_InfoNCE_git'
+            loss_metric = self.new_infonce_git_loss_metric[0]
+            loss_weight = self.config['new_infonce_git_weight'] * (0.1 + 0.9 * np.sin((self.config['restore_iter'] / self.config['total_iter'])*np.pi*0.5))
+            loss_info = 'unpaired'
             print_loss_info(loss_name, loss_metric, loss_weight, loss_info)
 
         print('{:#^30}: total_loss_metric={:.6f}'.format('Total Loss', np.mean(self.total_loss_metric)))
@@ -560,6 +691,9 @@ class ModelMo:
         torch.save(self.encoder.state_dict(),
                    osp.join('checkpoint', self.config['model_name'],
                             '{}-{:0>5}-encoder.ptm'.format(self.config['save_name'], self.config['restore_iter'])))
+        torch.save(self.encoder_mo.state_dict(),
+                   osp.join('checkpoint', self.config['model_name'],
+                            '{}-{:0>5}-encoder_mo.ptm'.format(self.config['save_name'], self.config['restore_iter'])))
         torch.save([self.optimizer.state_dict(), self.scheduler.state_dict()],
                    osp.join('checkpoint', self.config['model_name'],
                             '{}-{:0>5}-optimizer.ptm'.format(self.config['save_name'], self.config['restore_iter'])))

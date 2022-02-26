@@ -40,6 +40,8 @@ class DataSet(tordata.Dataset):
     def img2xarray(self, file_path):
         if self.dataset == 'oumvlp':
             pkl_name = 'seqs.pkl'
+        elif self.dataset == 'Outdoor':
+            pkl_name = os.listdir(file_path)[0]
         else:
             pkl_name = '{}.pkl'.format(os.path.basename(file_path))
         all_imgs = pickle.load(open(osp.join(file_path, pkl_name), 'rb'))

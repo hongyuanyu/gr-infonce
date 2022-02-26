@@ -30,13 +30,15 @@ parser.add_argument('--hiar_mem_bank', default=False, type=boolean_string, help=
 parser.add_argument('--log_name', default='', type=str, help='for writing logs')
 parser.add_argument('--spcloss_weight', default=0.0, type=float, help='weight for spcloss') 
 parser.add_argument('--self_supervised_weight', default=0.0, type=float, help='weight for infonce') 
-parser.add_argument('--da_iter', default=20000, type=int, help='after this iter starts da iteration')
+parser.add_argument('--da_iter', default=0, type=int, help='after this iter starts da iteration')
 parser.add_argument('--restore_name', default='', type=str, help='for writing logs')
 parser.add_argument('--infonce_git_weight', default=0.0, type=float, help='weight for infonce loss from github') 
 parser.add_argument('--model_usl', default=False, type=boolean_string, help='whether to use ModelUSL as Model')
 parser.add_argument('--model_twostream', default=False, type=boolean_string, help='whether to use Modeltwostream as Model')
 parser.add_argument('--mo', default=0.99, type=float, help='momentum') 
 parser.add_argument('--model_mo', default=False, type=boolean_string, help='whether to use ModelCo as Model')
+parser.add_argument('--class_level_infonce_git_weight', default=0.0, type=float, help='weight for infonce loss class level') 
+parser.add_argument('--new_infonce_git_weight', default=0.0, type=float, help='weight for new infonce loss') 
 
 
 parser.add_argument('--gpu', default='0,1,2,3', type=str, help='gpu id')

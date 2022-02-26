@@ -35,10 +35,13 @@ def evaluation(data, config):
     dataset = config['dataset']
     probe_seq_dict = {'CASIA-B': [['nm-05', 'nm-06'], ['bg-01', 'bg-02'], ['cl-01', 'cl-02']],
                       'OUMVLP': [['00']],
-                      'CASIA-EN': [['H_scene1_nm_1', 'H_scene1_nm_2', 'H_scene2_nm_1', 'H_scene2_nm_2', 'L_scene1_nm_1', 'L_scene1_nm_2', 'L_scene2_nm_1', 'L_scene2_nm_2'], 
-                                  ['H_scene1_bg_1', 'H_scene1_bg_2', 'H_scene2_bg_1', 'H_scene2_bg_2', 'L_scene1_bg_1', 'L_scene1_bg_2', 'L_scene2_bg_1', 'L_scene2_bg_2'],
-                                  ['H_scene1_cl_1', 'H_scene1_cl_2', 'H_scene2_cl_1', 'H_scene2_cl_2', 'L_scene1_cl_1', 'L_scene1_cl_2', 'L_scene2_cl_1', 'L_scene2_cl_2']],
-                    'CASIAC': [['H_scene1_nm_1', 'H_scene1_nm_2', 'H_scene2_nm_1', 'H_scene2_nm_2', 'L_scene1_nm_1', 'L_scene1_nm_2', 'L_scene2_nm_1', 'L_scene2_nm_2'], 
+                      'CASIAC': [['H_scene1_nm_1', 'H_scene1_nm_2', 'H_scene1_nm_3', 'H_scene1_nm_4', 'H_scene2_nm_1', 'H_scene2_nm_2', 'H_scene2_nm_3', 'H_scene2_nm_4',
+                                    'L_scene1_nm_1', 'L_scene1_nm_2', 'L_scene1_nm_3', 'L_scene1_nm_4', 'L_scene2_nm_1', 'L_scene2_nm_2', 'L_scene2_nm_3', 'L_scene2_nm_4',], 
+                                  [ 'H_scene1_bg_1', 'H_scene1_bg_2', 'H_scene1_bg_3', 'H_scene1_bg_4', 'H_scene2_bg_1', 'H_scene2_bg_2', 'H_scene2_bg_3', 'H_scene2_bg_4',
+                                    'L_scene1_bg_1', 'L_scene1_bg_2', 'L_scene1_bg_3', 'L_scene1_bg_4', 'L_scene2_bg_1', 'L_scene2_bg_2', 'L_scene2_bg_3', 'L_scene2_bg_4', ],
+                                  [ 'H_scene1_cl_1', 'H_scene1_cl_2', 'H_scene1_cl_3', 'H_scene1_cl_4', 'H_scene2_cl_1', 'H_scene2_cl_2', 'H_scene2_cl_3', 'H_scene2_cl_4',
+                                    'L_scene1_cl_1', 'L_scene1_cl_2', 'L_scene1_cl_3', 'L_scene1_cl_4', 'L_scene2_cl_1', 'L_scene2_cl_2', 'L_scene2_cl_3', 'L_scene2_cl_4', ]],
+                    'CASIA-EN': [['H_scene1_nm_1', 'H_scene1_nm_2', 'H_scene2_nm_1', 'H_scene2_nm_2', 'L_scene1_nm_1', 'L_scene1_nm_2', 'L_scene2_nm_1', 'L_scene2_nm_2'], 
                                   ['H_scene1_bg_1', 'H_scene1_bg_2', 'H_scene2_bg_1', 'H_scene2_bg_2', 'L_scene1_bg_1', 'L_scene1_bg_2', 'L_scene2_bg_1', 'L_scene2_bg_2'],
                                   ['H_scene1_cl_1', 'H_scene1_cl_2', 'H_scene2_cl_1', 'H_scene2_cl_2', 'L_scene1_cl_1', 'L_scene1_cl_2', 'L_scene2_cl_1', 'L_scene2_cl_2']],
                       }
