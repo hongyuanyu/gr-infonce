@@ -365,7 +365,7 @@ class ModelMo:
                         new_infonce_loss_git_ori += self.new_infonce_loss_git(query[i].unsqueeze(0), positive_label_keys[num_pl].unsqueeze(0), negative_label_keys)
                     new_infonce_loss_git_ori += self.new_infonce_loss_git(query[i].unsqueeze(0), positive_da[i].unsqueeze(0), negative_label_keys)
                     loss += new_infonce_loss_git_ori.mean() * self.config['new_infonce_git_weight']* (0.9 + 0.1 * np.sin((self.config['restore_iter'] / self.config['total_iter'])*np.pi*0.5))
-                new_infonce_loss_git_ori += self.new_infonce_loss_git(query, positive_da, negative_label_keys)
+                # new_infonce_loss_git_ori += self.new_infonce_loss_git(query, positive_da, negative_label_keys)
                 
                 loss += new_infonce_loss_git_ori.mean() * self.config['new_infonce_git_weight']* (0.9 + 0.1 * np.sin((self.config['restore_iter'] / self.config['total_iter'])*np.pi*0.5))
 
